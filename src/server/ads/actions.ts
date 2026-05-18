@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { can } from "@/server/auth/can";
 import { loadActorContext } from "@/server/auth/load-actor";
+import { recordAudit } from "@/server/audit/record";
 import { syncTenant, type TenantSyncSummary } from "./sync";
 
 export type SyncActionResult =
@@ -36,6 +37,18 @@ export async function runSyncAction(
 
   try {
     const summary = await syncTenant(actor.tenantId);
+    await recordAudit({
+      tenantId: actor.tenantId,
+      eventType: "AD_ACCOUNT_CONNECTED", // proxy event para "sync executado"
+      actorUserId: actor.id,
+      resourceType: "sync",
+      metadata: {
+        trigger: "manual",
+        syncedAccounts: summary.syncedAccounts,
+        failedAccounts: summary.failedAccounts,
+        totalMetrics: summary.totalMetrics,
+      },
+    });
     // Invalida o cache do dashboard do tenant — a próxima navegação refaz
     // as queries com os dados novos.
     revalidatePath(`/${tenantSlug}`, "layout");

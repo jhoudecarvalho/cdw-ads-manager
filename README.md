@@ -272,30 +272,90 @@ Selecionado por `ADS_INTEGRATIONS_MODE=mock|live` no `.env`. `live` sem credenci
 
 As 9 telas de Campanhas Ads são todas "ao vivo" agora — dados via `withTenantScope` (RLS), filtros do topo aplicados, role-aware:
 
-| Tela | Conteúdo |
-|---|---|
-| **Visão Geral** | 10 KPIs + line chart Investimento × Receita + split Google/Meta |
-| **Google Ads** | KPIs específicos + tendência diária + distribuição/ROAS por tipo (Search/PMax/Display) + top 10 campanhas |
-| **Meta Ads** | KPIs específicos + tendência + distribuição/ROAS por objetivo (Lead/Tráfego/Engagement) + top 10 |
-| **Campanhas** | Tabela completa de todas as campanhas, busca por nome/franquia/tipo, ordenação por 6 colunas, paginação 25/pág |
-| **Franquias** | Cards ordenados por ROAS (ranking #01, #02…), KPIs principais, barra de ROAS vs melhor da rede, split visual Google/Meta, busca + paginação |
-| **Regiões** | KPIs gerais + 2 bar charts (invest. e receita por região) + tabela comparativa com share % e linha de totais |
-| **Performance** | 6 KPIs avançados (taxa conv., receita/clique, CPC/CPM, CTR) + barras de share por tipo de campanha + tabela |
-| **Financeiro** | Custo/receita/lucro/margem/médias diárias + line chart triplo (custo/receita/lucro) — verde se lucro positivo, vermelho se negativo |
-| **Comparativo** | Google vs Meta lado a lado, 7 métricas comparadas com delta % (verde = ganhando, vermelho = perdendo) |
+| Tela            | Conteúdo                                                                                                                                    |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Visão Geral** | 10 KPIs + line chart Investimento × Receita + split Google/Meta                                                                             |
+| **Google Ads**  | KPIs específicos + tendência diária + distribuição/ROAS por tipo (Search/PMax/Display) + top 10 campanhas                                   |
+| **Meta Ads**    | KPIs específicos + tendência + distribuição/ROAS por objetivo (Lead/Tráfego/Engagement) + top 10                                            |
+| **Campanhas**   | Tabela completa de todas as campanhas, busca por nome/franquia/tipo, ordenação por 6 colunas, paginação 25/pág                              |
+| **Franquias**   | Cards ordenados por ROAS (ranking #01, #02…), KPIs principais, barra de ROAS vs melhor da rede, split visual Google/Meta, busca + paginação |
+| **Regiões**     | KPIs gerais + 2 bar charts (invest. e receita por região) + tabela comparativa com share % e linha de totais                                |
+| **Performance** | 6 KPIs avançados (taxa conv., receita/clique, CPC/CPM, CTR) + barras de share por tipo de campanha + tabela                                 |
+| **Financeiro**  | Custo/receita/lucro/margem/médias diárias + line chart triplo (custo/receita/lucro) — verde se lucro positivo, vermelho se negativo         |
+| **Comparativo** | Google vs Meta lado a lado, 7 métricas comparadas com delta % (verde = ganhando, vermelho = perdendo)                                       |
 
 **Loaders** (`src/server/metrics/*.ts`):
+
 - `shared.ts` — `buildMetricWhere/buildCampaignWhere/buildFranchiseWhere` + helpers (`num`, `safeDiv`, `dateSince`)
 - `dashboard.ts` (loadOverview), `by-platform.ts` (loadPlatformSlice), `campaigns-list.ts` (loadCampaignsList), `franchise-rankings.ts` (loadFranchiseRankings), `region-summary.ts` (loadRegionSummary), `performance.ts` (loadPerformance), `financial.ts` (loadFinancial), `comparison.ts` (loadComparison)
 - Todos respeitam `DashboardFilters` (platform/region/franchise vindos da URL) + escopo do ator
 
 **Componentes reutilizáveis**:
+
 - `LineTrendChart`, `DistributionBarChart`, `OverviewChart` (Recharts via shadcn ChartContainer)
 - `KpiCard`, `DashboardHeader` (consistência visual)
 - `src/lib/format.ts` (`brl`, `int`, `pct`, `multiplier`, `platformLabel`)
 - `src/lib/filters.ts` (`parseDashboardFilters` — normaliza URL → tipo)
 
 **Atenção dev**: funções não cruzam fronteira server → client component. Formatadores ficaram inline nos chart components em vez de prop `formatY` (que quebrava com `Functions cannot be passed directly to Client Components`).
+
+## LGPD, segurança e testes (Fase 7)
+
+### Trilha de auditoria
+
+`AuditLog` ativo, escrito por `recordAudit()` (`src/server/audit/record.ts`). Failsafe — falha de log nunca bloqueia a ação principal do usuário. Plugado em:
+
+| Evento | Onde | Metadata |
+|---|---|---|
+| `USER_LOGIN` (ok) | `src/auth.ts` authorize | `{ ok: true }` |
+| `USER_LOGIN` (falha) | `src/auth.ts` authorize | `{ ok: false, reason: "unknown_email" \| "wrong_password" }` |
+| `USER_SIGNUP` | `signupAction` | `{ role }` |
+| `TERMS_ACCEPTED` | `signupAction` | versões aceitas |
+| `AD_ACCOUNT_CONNECTED` (proxy para sync) | `runSyncAction` | `{ trigger, syncedAccounts, totalMetrics }` |
+| `DATA_EXPORTED` | `/api/lgpd/export` | — |
+| `DATA_DELETED` | `anonymizeUser` | `{ reason }` |
+
+Cada linha guarda IP e User-Agent quando dentro de um request context.
+
+### Direitos do titular
+
+- **Exportação (art. 15)** — `GET /api/lgpd/export` retorna JSON com perfil + aceites + vínculos + últimas 1.000 ações de auditoria do próprio usuário, como download attachment.
+- **Anonimização (art. 18)** — `POST /api/lgpd/delete-account` com `{ confirm: "EXCLUIR", reason? }`. Atualiza User: email vira `anonymized_{hash}@removed.invalid`, name/passwordHash/lastLoginAt → null, deletedAt setado. Vínculos e auditoria são preservados (integridade), mas sem identificar o titular.
+- **Tela `/{slug}/account`** — exibe perfil, histórico de aceites e os dois botões.
+
+### Política de retenção
+
+Cron `/api/cron/retention` (protegido por `Bearer CRON_SECRET`):
+
+| Tabela | Retenção | Por quê |
+|---|---|---|
+| `sync_logs` | 90 dias | Operacional, só serve para debug recente |
+| `audit_logs` | 5 anos | Padrão para auditoria fiscal/regulatória |
+| `campaign_metrics_daily` | 2 anos | Histórico + tendência anual; mais que isso vira BI separado |
+
+Iterado por tenant via `withTenantScope` — cada delete só apaga o que está no escopo correto.
+
+### Cabeçalhos de segurança (`next.config.ts`)
+
+- `Content-Security-Policy` (default-src 'self', form-action 'self', frame-ancestors 'none', object-src 'none', …)
+- `Strict-Transport-Security` (2 anos + includeSubDomains + preload — só faz efeito sob HTTPS real)
+- `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy` proibindo câmera/microfone/geolocalização/cohort
+
+### Testes Playwright (e2e)
+
+Suíte mínima em `tests/e2e/auth.spec.ts` cobrindo fluxos críticos contra o dev server:
+
+| # | Cenário | Verifica |
+|---|---|---|
+| 1 | Login válido | Cai na Visão Geral com header certo |
+| 2 | Login com senha errada | Mensagem de erro, fica em /login |
+| 3 | Rota autenticada sem sessão | Redireciona para /login |
+| 4 | Sessão de A acessando rota de B | Redireciona para /B/login (isolamento) |
+
+Rode com `npm run test:e2e`. O Playwright sobe o dev server automaticamente (`webServer` reusa se já tiver porta 3000).
+
+**Total**: 51 testes Vitest (unit + RLS isolation) + 4 testes Playwright (e2e).
 
 ## Status
 
@@ -305,4 +365,5 @@ As 9 telas de Campanhas Ads são todas "ao vivo" agora — dados via `withTenant
 - **Fase 4 — Layout e navegação** ✓
 - **Fase 5 — Integrações Google + Meta Ads** ✓
 - **Fase 6 — Dashboards** ✓
-- Próxima: **Fase 7 — LGPD, auditoria e testes** (headers de segurança, AuditLog ativo, exportação/anonimização de dados do titular, retenção, suíte Playwright)
+- **Fase 7 — LGPD, segurança e testes** ✓
+- Próxima: **Mini-fase de infra** (docker-compose.prod.yml, Dockerfile, env files por ambiente, scripts de bootstrap) — só então **Fase 8 — Refino** dos placeholders BREVE

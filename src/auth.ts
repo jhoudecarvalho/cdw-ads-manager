@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db/prisma";
 import { withTenantScope } from "@/server/db/tenant-scope";
 import { isValidTenantSlug } from "@/server/tenant/slug";
+import { recordAudit } from "@/server/audit/record";
 import type { UserRole } from "@/generated/prisma/client";
 
 /**
@@ -72,10 +73,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             },
           }),
         );
-        if (!user || !user.passwordHash) return null;
+
+        if (!user || !user.passwordHash) {
+          // Auditoria: tentativa de login com email inexistente ou sem senha.
+          await recordAudit({
+            tenantId: tenant.id,
+            eventType: "USER_LOGIN",
+            metadata: { ok: false, reason: "unknown_email", email },
+          });
+          return null;
+        }
 
         const ok = await bcrypt.compare(password, user.passwordHash);
-        if (!ok) return null;
+        if (!ok) {
+          await recordAudit({
+            tenantId: tenant.id,
+            eventType: "USER_LOGIN",
+            actorUserId: user.id,
+            metadata: { ok: false, reason: "wrong_password" },
+          });
+          return null;
+        }
 
         await withTenantScope(tenant.id, (tx) =>
           tx.user.update({
@@ -83,6 +101,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             data: { lastLoginAt: new Date() },
           }),
         );
+
+        await recordAudit({
+          tenantId: tenant.id,
+          eventType: "USER_LOGIN",
+          actorUserId: user.id,
+          metadata: { ok: true },
+        });
 
         return {
           id: user.id,

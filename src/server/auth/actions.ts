@@ -9,6 +9,7 @@ import { signIn } from "@/auth";
 import { prisma } from "@/server/db/prisma";
 import { withTenantScope } from "@/server/db/tenant-scope";
 import { isValidTenantSlug } from "@/server/tenant/slug";
+import { recordAudit } from "@/server/audit/record";
 import { DOCUMENT_VERSIONS } from "./terms";
 
 export type FormState = {
@@ -136,7 +137,7 @@ export async function signupAction(
     const userCount = await tx.user.count();
     const role = userCount === 0 ? "ADMIN" : "FRANCHISEE";
 
-    await tx.user.create({
+    const created = await tx.user.create({
       data: {
         tenantId: tenant.id,
         email,
@@ -162,8 +163,13 @@ export async function signupAction(
           ],
         },
       },
+      select: { id: true, role: true },
     });
-    return { duplicate: false as const };
+    return {
+      duplicate: false as const,
+      userId: created.id,
+      assignedRole: created.role,
+    };
   });
 
   if (result.duplicate) {
@@ -172,6 +178,26 @@ export async function signupAction(
       fieldErrors: { email: "Já existe uma conta com este e-mail." },
     };
   }
+
+  await recordAudit({
+    tenantId: tenant.id,
+    eventType: "USER_SIGNUP",
+    actorUserId: result.userId,
+    metadata: { role: result.assignedRole },
+    ip: ipAddress,
+    userAgent,
+  });
+  await recordAudit({
+    tenantId: tenant.id,
+    eventType: "TERMS_ACCEPTED",
+    actorUserId: result.userId,
+    metadata: {
+      terms_of_use: DOCUMENT_VERSIONS.terms_of_use,
+      privacy_policy: DOCUMENT_VERSIONS.privacy_policy,
+    },
+    ip: ipAddress,
+    userAgent,
+  });
 
   try {
     await signIn("credentials", {
