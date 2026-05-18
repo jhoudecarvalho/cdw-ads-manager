@@ -3,14 +3,20 @@
 #
 # Topologia:
 #
-#   nginx (host, apt) ──► 127.0.0.1:3000 ──► app (container)
-#                                              │
-#                                              └─► postgres (container)
-#                                                  + volume persistente
+#   Nginx Proxy Manager (container, network `npm_default`)
+#     │  proxy_pass http://cdw-ads-manager-app-1:3000
+#     ▼
+#   app (container, networks: default + npm_default)
+#     │
+#     └─► postgres (container, network `default`) + volume persistente
 #
-# O app NÃO expõe a porta no 0.0.0.0 — só no loopback, pra forçar o tráfego
-# externo a passar por nginx (TLS + headers). O Postgres não expõe porta
-# alguma no host (só network interna do compose).
+# O NPM faz proxy via DNS interno do Docker — por isso a app precisa estar
+# anexada à network `npm_default` (declarada como external aqui). Sem isso,
+# `proxy_pass http://cdw-ads-manager-app-1:3000` não resolve e dá 502.
+#
+# O bind em 127.0.0.1:3000 é mantido só pra debug local na VM (curl direto).
+# O tráfego de produção entra pelo NPM (portas 80/443 do host).
+# Postgres não expõe porta alguma no host.
 #
 # Uso (na VM Debian):
 #   1. Copie .env.example pra .env e preencha (use openssl pra gerar secrets)
@@ -75,8 +81,12 @@ services:
       META_ADS_CLIENT_SECRET: ${META_ADS_CLIENT_SECRET:-}
       NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${NEXT_SERVER_ACTIONS_ENCRYPTION_KEY:-}
     ports:
-      # Bind no loopback: só nginx do host alcança.
+      # Bind no loopback: só debug local na VM (curl direto). Tráfego de
+      # produção entra pelo NPM via DNS interno na network `npm_default`.
       - "127.0.0.1:3000:3000"
+    networks:
+      - default       # alcance ao postgres
+      - npm_default   # alcance pelo Nginx Proxy Manager (proxy reverso)
 
   # Container one-shot: aplica migrations + role + (opcional) seed e encerra.
   # Roda com:  docker compose -f compose.prod.yaml run --rm bootstrap
@@ -97,3 +107,10 @@ services:
 
 volumes:
   postgres_data:
+
+networks:
+  # Network do Nginx Proxy Manager (criada pelo compose do NPM, em outro lugar).
+  # `external: true` = "use a que já existe, não tente criar". Se o NPM ainda
+  # não estiver de pé, `docker compose up` falha com mensagem clara.
+  npm_default:
+    external: true
