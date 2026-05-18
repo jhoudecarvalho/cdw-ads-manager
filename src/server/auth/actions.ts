@@ -7,6 +7,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { signIn } from "@/auth";
 import { prisma } from "@/server/db/prisma";
+import { withTenantScope } from "@/server/db/tenant-scope";
 import { isValidTenantSlug } from "@/server/tenant/slug";
 import { DOCUMENT_VERSIONS } from "./terms";
 
@@ -110,18 +111,6 @@ export async function signupAction(
   if (!tenant) return { ok: false, error: "Tenant não encontrado." };
 
   const email = parsed.data.email.toLowerCase();
-
-  const existing = await prisma.user.findFirst({
-    where: { tenantId: tenant.id, email },
-    select: { id: true },
-  });
-  if (existing) {
-    return {
-      ok: false,
-      fieldErrors: { email: "Já existe uma conta com este e-mail." },
-    };
-  }
-
   const passwordHash = await bcrypt.hash(parsed.data.password, 12);
   const h = await headers();
   const ipAddress =
@@ -130,41 +119,59 @@ export async function signupAction(
     null;
   const userAgent = h.get("user-agent") ?? null;
 
-  // Primeiro usuário cadastrado do tenant vira ADMIN. Os próximos viram
-  // FRANCHISEE por default — convite com role definida virá em uma
-  // funcionalidade futura.
-  const userCount = await prisma.user.count({
-    where: { tenantId: tenant.id },
-  });
-  const role = userCount === 0 ? "ADMIN" : "FRANCHISEE";
+  // Tudo dentro de uma transação RLS-scoped: contagem, checagem de duplicata
+  // e criação compartilham a mesma vista do tenant. Sem isso, a contagem
+  // veria zero (RLS bloqueia), a checagem de duplicata também — e poderíamos
+  // recriar um e-mail já existente. O constraint @@unique([tenantId, email])
+  // ainda nos protegeria, mas com erro de banco em vez de mensagem amigável.
+  const result = await withTenantScope(tenant.id, async (tx) => {
+    const existing = await tx.user.findFirst({
+      where: { email },
+      select: { id: true },
+    });
+    if (existing) {
+      return { duplicate: true as const };
+    }
 
-  await prisma.user.create({
-    data: {
-      tenantId: tenant.id,
-      email,
-      name: parsed.data.name,
-      passwordHash,
-      role,
-      termsAcceptances: {
-        create: [
-          {
-            tenantId: tenant.id,
-            documentKey: "terms_of_use",
-            version: DOCUMENT_VERSIONS.terms_of_use,
-            ipAddress,
-            userAgent,
-          },
-          {
-            tenantId: tenant.id,
-            documentKey: "privacy_policy",
-            version: DOCUMENT_VERSIONS.privacy_policy,
-            ipAddress,
-            userAgent,
-          },
-        ],
+    const userCount = await tx.user.count();
+    const role = userCount === 0 ? "ADMIN" : "FRANCHISEE";
+
+    await tx.user.create({
+      data: {
+        tenantId: tenant.id,
+        email,
+        name: parsed.data.name,
+        passwordHash,
+        role,
+        termsAcceptances: {
+          create: [
+            {
+              tenantId: tenant.id,
+              documentKey: "terms_of_use",
+              version: DOCUMENT_VERSIONS.terms_of_use,
+              ipAddress,
+              userAgent,
+            },
+            {
+              tenantId: tenant.id,
+              documentKey: "privacy_policy",
+              version: DOCUMENT_VERSIONS.privacy_policy,
+              ipAddress,
+              userAgent,
+            },
+          ],
+        },
       },
-    },
+    });
+    return { duplicate: false as const };
   });
+
+  if (result.duplicate) {
+    return {
+      ok: false,
+      fieldErrors: { email: "Já existe uma conta com este e-mail." },
+    };
+  }
 
   try {
     await signIn("credentials", {

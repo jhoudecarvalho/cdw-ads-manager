@@ -1,22 +1,25 @@
 // Franchise HUB — schema do banco
 // Documentação: https://pris.ly/d/prisma-schema
 //
-// Princípio multi-tenant: TODAS as tabelas de negócio terão `tenantId`,
+// Princípio multi-tenant: TODAS as tabelas de negócio têm `tenantId`,
 // `createdAt`, `updatedAt` e (onde fizer sentido) `deletedAt`. O isolamento é
-// reforçado por Row-Level Security do Postgres, ativado por migration manual
-// na Fase 3. O Tenant em si é a única tabela "global" — não tem `tenantId`.
+// reforçado por Row-Level Security do Postgres — habilitado pela migration
+// `enable_rls_on_business_tables`. Toda query passa por `withTenantScope` para
+// definir `app.current_tenant_id`. O Tenant em si é a única tabela "global"
+// (não tem RLS) — quem o lê é o resolvedor de tenant.
 
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
 }
 
-// Prisma 7+: `url`/`directUrl` saíram do schema. Conexão para o client vem do
-// adapter (src/server/db/prisma.ts); conexão para Migrate vem do
-// `datasource.url` em prisma.config.ts.
 datasource db {
   provider = "postgresql"
 }
+
+// =========================================================================
+// Enums
+// =========================================================================
 
 enum TenantStatus {
   ACTIVE
@@ -25,10 +28,58 @@ enum TenantStatus {
 }
 
 enum UserRole {
-  ADMIN       // matriz: vê tudo do tenant
-  REGIONAL    // gestor regional: vê franquias de suas regiões
-  FRANCHISEE  // franqueado: vê só a própria franquia
+  ADMIN // matriz: vê tudo do tenant
+  REGIONAL // gestor regional: vê franquias de suas regiões
+  FRANCHISEE // franqueado: vê só a própria franquia
 }
+
+enum FranchiseStatus {
+  ACTIVE
+  PAUSED
+  TERMINATED
+}
+
+enum Platform {
+  GOOGLE_ADS
+  META_ADS
+}
+
+enum AdAccountStatus {
+  CONNECTED
+  TOKEN_EXPIRED
+  REVOKED
+  ERROR
+}
+
+enum CampaignStatus {
+  ACTIVE
+  PAUSED
+  REMOVED
+  ENDED
+}
+
+enum SyncStatus {
+  RUNNING
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+enum AuditEventType {
+  USER_LOGIN
+  USER_SIGNUP
+  USER_LOGOUT
+  USER_ROLE_CHANGED
+  AD_ACCOUNT_CONNECTED
+  AD_ACCOUNT_DISCONNECTED
+  DATA_EXPORTED
+  DATA_DELETED
+  TERMS_ACCEPTED
+}
+
+// =========================================================================
+// Tenancy
+// =========================================================================
 
 model Tenant {
   id           String       @id @default(cuid())
@@ -42,10 +93,16 @@ model Tenant {
   updatedAt    DateTime     @updatedAt
   deletedAt    DateTime?
 
-  users User[]
+  users      User[]
+  regions    Region[]
+  franchises Franchise[]
 
   @@map("tenants")
 }
+
+// =========================================================================
+// Identidade e acesso
+// =========================================================================
 
 model User {
   id            String    @id @default(cuid())
@@ -53,7 +110,6 @@ model User {
   email         String
   emailVerified DateTime?
   name          String?
-  // passwordHash é null quando o usuário só usa login social (Fase futura).
   passwordHash  String?
   role          UserRole  @default(FRANCHISEE)
   lastLoginAt   DateTime?
@@ -63,22 +119,20 @@ model User {
 
   tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   termsAcceptances TermsAcceptance[]
+  franchises       UserFranchise[]
+  regions          UserRegion[]
 
-  // E-mail é único por tenant — o mesmo e-mail pode existir em tenants
-  // diferentes (uma franqueadora pode ter o mesmo gerente que outra).
   @@unique([tenantId, email])
   @@index([tenantId])
   @@map("users")
 }
 
-/// Registro versionado de aceite de Termos/Política (LGPD).
-/// Cada nova versão de documento gera uma nova linha — não atualizamos a
-/// antiga, para preservar a trilha de auditoria.
+/// Aceite versionado de Termos/Política (LGPD) — imutável.
 model TermsAcceptance {
   id          String   @id @default(cuid())
   tenantId    String
   userId      String
-  documentKey String // "terms_of_use" | "privacy_policy" | …
+  documentKey String
   version     String
   acceptedAt  DateTime @default(now())
   ipAddress   String?
@@ -90,4 +144,216 @@ model TermsAcceptance {
   @@index([tenantId])
   @@index([documentKey, version])
   @@map("terms_acceptances")
+}
+
+/// Trilha de auditoria — também imutável. Registra ações administrativas e
+/// acessos sensíveis para LGPD (Fase 7 vai escrever aqui a partir das rotas).
+model AuditLog {
+  id           String         @id @default(cuid())
+  tenantId     String
+  actorUserId  String?
+  eventType    AuditEventType
+  resourceType String?
+  resourceId   String?
+  metadata     Json?
+  ipAddress    String?
+  userAgent    String?
+  occurredAt   DateTime       @default(now())
+
+  @@index([tenantId, occurredAt(sort: Desc)])
+  @@index([actorUserId])
+  @@index([eventType])
+  @@map("audit_logs")
+}
+
+// =========================================================================
+// Estrutura organizacional: Region e Franchise
+// =========================================================================
+
+model Region {
+  id        String    @id @default(cuid())
+  tenantId  String
+  name      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  franchises Franchise[]
+  users      UserRegion[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("regions")
+}
+
+model Franchise {
+  id        String          @id @default(cuid())
+  tenantId  String
+  regionId  String
+  name      String
+  /// UF brasileira em ISO 3166-2:BR (ex.: "SP", "PR").
+  state     String          @db.Char(2)
+  city      String
+  status    FranchiseStatus @default(ACTIVE)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  deletedAt DateTime?
+
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  region      Region          @relation(fields: [regionId], references: [id], onDelete: Restrict)
+  adAccounts  AdAccount[]
+  campaigns   Campaign[]
+  users       UserFranchise[]
+
+  @@index([tenantId])
+  @@index([tenantId, regionId])
+  @@index([tenantId, status])
+  @@map("franchises")
+}
+
+// Vínculos N:N de usuário com franquias e regiões — populam ActorContext do
+// can() em src/server/auth/can.ts.
+
+model UserFranchise {
+  userId      String
+  franchiseId String
+  tenantId    String
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  franchise Franchise @relation(fields: [franchiseId], references: [id], onDelete: Cascade)
+
+  @@id([userId, franchiseId])
+  @@index([tenantId])
+  @@index([franchiseId])
+  @@map("user_franchises")
+}
+
+model UserRegion {
+  userId    String
+  regionId  String
+  tenantId  String
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  region Region @relation(fields: [regionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, regionId])
+  @@index([tenantId])
+  @@index([regionId])
+  @@map("user_regions")
+}
+
+// =========================================================================
+// Integrações de Ads
+// =========================================================================
+
+/// Conta de anúncios conectada via OAuth por franqueado.
+/// `accessToken` / `refreshToken` ficam criptografados em repouso (Fase 5
+/// adiciona o helper de criptografia; por ora ficam como strings).
+model AdAccount {
+  id                String          @id @default(cuid())
+  tenantId          String
+  franchiseId       String
+  platform          Platform
+  externalAccountId String
+  /// Ciphertext em repouso. Helpers de cifra entram na Fase 5.
+  accessToken       String?
+  refreshToken      String?
+  tokenExpiresAt    DateTime?
+  status            AdAccountStatus @default(CONNECTED)
+  lastSyncAt        DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  deletedAt         DateTime?
+
+  franchise Franchise  @relation(fields: [franchiseId], references: [id], onDelete: Cascade)
+  campaigns Campaign[]
+  syncLogs  SyncLog[]
+
+  // Mesma `externalAccountId` por plataforma só pode existir uma vez por
+  // tenant — evita conexão duplicada da mesma conta.
+  @@unique([tenantId, platform, externalAccountId])
+  @@index([tenantId])
+  @@index([franchiseId])
+  @@map("ad_accounts")
+}
+
+model Campaign {
+  id          String         @id @default(cuid())
+  tenantId    String
+  franchiseId String
+  adAccountId String
+  platform    Platform
+  externalId  String
+  name        String
+  /// `type` do Google ou `objective` do Meta (heterogêneo por plataforma).
+  type        String?
+  status      CampaignStatus @default(ACTIVE)
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  deletedAt   DateTime?
+
+  franchise Franchise             @relation(fields: [franchiseId], references: [id], onDelete: Cascade)
+  adAccount AdAccount             @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
+  metrics   CampaignMetricDaily[]
+
+  @@unique([adAccountId, externalId])
+  @@index([tenantId])
+  @@index([franchiseId])
+  @@index([adAccountId])
+  @@index([tenantId, platform])
+  @@map("campaigns")
+}
+
+/// Métricas diárias por campanha. Cresce muito — particionamento por data
+/// pode entrar quando passar de alguns milhões de linhas.
+model CampaignMetricDaily {
+  id              String   @id @default(cuid())
+  tenantId        String
+  campaignId      String
+  date            DateTime @db.Date
+  spend           Decimal  @default(0) @db.Decimal(14, 2)
+  impressions     Int      @default(0)
+  clicks          Int      @default(0)
+  conversions     Decimal  @default(0) @db.Decimal(14, 4)
+  conversionValue Decimal  @default(0) @db.Decimal(14, 2)
+  reach           Int?
+  frequency       Decimal? @db.Decimal(8, 4)
+  /// Campos específicos por plataforma (linkClicks, qualityScore, videoViews,
+  /// leads, engagement, etc.) — JSON para evitar explosão de colunas.
+  platformExtras  Json?
+  syncedAt        DateTime @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, date])
+  @@index([tenantId, date])
+  @@index([campaignId, date])
+  @@map("campaign_metrics_daily")
+}
+
+// =========================================================================
+// Operacional: sincronização
+// =========================================================================
+
+model SyncLog {
+  id               String     @id @default(cuid())
+  tenantId         String
+  adAccountId      String?
+  platform         Platform
+  startedAt        DateTime   @default(now())
+  finishedAt       DateTime?
+  status           SyncStatus
+  recordsProcessed Int        @default(0)
+  error            String?
+
+  adAccount AdAccount? @relation(fields: [adAccountId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, startedAt(sort: Desc)])
+  @@index([adAccountId])
+  @@map("sync_logs")
 }

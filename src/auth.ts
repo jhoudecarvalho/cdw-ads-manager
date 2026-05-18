@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/server/db/prisma";
+import { withTenantScope } from "@/server/db/tenant-scope";
 import { isValidTenantSlug } from "@/server/tenant/slug";
 import type { UserRole } from "@/generated/prisma/client";
 
@@ -46,37 +47,42 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const { email, password, tenantSlug } = parsed.data;
 
+        // Tenant não tem RLS — leitura direta.
         const tenant = await prisma.tenant.findFirst({
           where: { slug: tenantSlug, deletedAt: null, status: "ACTIVE" },
           select: { id: true },
         });
         if (!tenant) return null;
 
-        const user = await prisma.user.findFirst({
-          where: {
-            tenantId: tenant.id,
-            email: email.toLowerCase(),
-            deletedAt: null,
-            passwordHash: { not: null },
-          },
-          select: {
-            id: true,
-            email: true,
-            name: true,
-            role: true,
-            tenantId: true,
-            passwordHash: true,
-          },
-        });
+        // Usuários têm RLS — leitura precisa de scope.
+        const user = await withTenantScope(tenant.id, async (tx) =>
+          tx.user.findFirst({
+            where: {
+              email: email.toLowerCase(),
+              deletedAt: null,
+              passwordHash: { not: null },
+            },
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              role: true,
+              tenantId: true,
+              passwordHash: true,
+            },
+          }),
+        );
         if (!user || !user.passwordHash) return null;
 
         const ok = await bcrypt.compare(password, user.passwordHash);
         if (!ok) return null;
 
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { lastLoginAt: new Date() },
-        });
+        await withTenantScope(tenant.id, (tx) =>
+          tx.user.update({
+            where: { id: user.id },
+            data: { lastLoginAt: new Date() },
+          }),
+        );
 
         return {
           id: user.id,

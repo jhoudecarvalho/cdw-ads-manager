@@ -154,13 +154,48 @@ proxy.ts                       # ex-middleware (Next 16)
 
 ### Usuários de exemplo (após `npm run db:seed`)
 
-| Tenant | E-mail | Senha |
-|---|---|---|
-| anjos | `admin@anjos.test` | `dev-anjos-123` |
+| Tenant | E-mail              | Senha            |
+| ------ | ------------------- | ---------------- |
+| anjos  | `admin@anjos.test`  | `dev-anjos-123`  |
 | kgepel | `admin@kgepel.test` | `dev-kgepel-123` |
+
+## Modelos de negócio + RLS (Fase 3)
+
+11 modelos novos: `Region`, `Franchise`, `AdAccount`, `Campaign`, `CampaignMetricDaily`, `SyncLog`, `AuditLog`, `UserFranchise`, `UserRegion`, enums por plataforma. Soft-delete onde faz sentido, índices em `(tenantId, …)`.
+
+**Row-Level Security**: toda tabela com `tenantId` tem `tenant_isolation` policy (`FOR ALL` com `USING` e `WITH CHECK`) comparando `"tenantId"` com `current_setting('app.current_tenant_id', true)`. Migration: `20260518182000_enable_rls/migration.sql`.
+
+**Role da aplicação separado**: o role default do Neon (`neondb_owner`) vem com `BYPASSRLS = true` e ignora policies. Para enforcement real, criamos `franchise_hub_app` sem BYPASSRLS via `scripts/setup-app-role.ts` (rode uma vez por banco). `DATABASE_URL` usa esse role; `DIRECT_URL` continua com o owner para Migrate.
+
+**Testes de isolamento contra Neon real** (`tests/tenant-isolation.test.ts`):
+
+| Cenário | Resultado |
+|---|---|
+| `SELECT` sem `withTenantScope` | retorna 0 linhas |
+| `SELECT` scoped em A | só vê dados de A |
+| `findUnique` por id de B, scoped em A | retorna `null` |
+| `INSERT` com `tenantId` de B, scoped em A | erro (WITH CHECK) |
+| `UPDATE`/`DELETE` cross-tenant | 0 linhas afetadas |
+
+**Helpers**:
+- `withTenantScope(tenantId, callback)` — transação com `set_config` (`src/server/db/tenant-scope.ts`)
+- `loadActorContext(session)` — popula `franchiseIds`/`regionIds` para `can()` (`src/server/auth/load-actor.ts`)
+
+**Volume do seed** (default `SEED_FRANCHISES_PER_TENANT=12`):
+
+| Por tenant | Quantidade |
+|---|---|
+| Regiões | 5 (Sul, Sudeste, Centro-Oeste, Nordeste, Norte) |
+| Franquias | 12 (distribuídas pelas regiões, cidades reais por UF) |
+| AdAccounts | 24 (Google + Meta por franquia) |
+| Campanhas | 72 (3 por AdAccount) |
+| Métricas diárias | 1.008 (14 dias × 72 campanhas) |
+
+Para mais volume: `SEED_FRANCHISES_PER_TENANT=150 npm run db:seed`.
 
 ## Status
 
 - **Fase 1 — Fundação e Multi-tenancy** ✓
 - **Fase 2 — Autenticação e Papéis** ✓
-- Próxima: **Fase 3 — Modelos de negócio + RLS** (Region, Franchise, AdAccount, Campaign, CampaignMetricDaily + policies do Postgres)
+- **Fase 3 — Modelos de negócio + RLS** ✓
+- Próxima: **Fase 4 — Layout e navegação** (sidebar dark, menu Campanhas Ads, dashboards Recharts, placeholders dos módulos "BREVE")
