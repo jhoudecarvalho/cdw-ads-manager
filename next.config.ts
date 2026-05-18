@@ -37,6 +37,13 @@ const CSP = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // Empacota apenas os arquivos necessários em `.next/standalone/` com um
+  // `server.js` próprio — usado pela imagem Docker (Fase 9). Sem isso, o
+  // runner precisaria de todo o node_modules. Com Prisma 7 + driver adapter
+  // (`@prisma/adapter-pg`), não há query engine nativo, então o trace
+  // padrão já cobre tudo que importamos.
+  output: "standalone",
+
   turbopack: {
     root: path.resolve(__dirname),
   },

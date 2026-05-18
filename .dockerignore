@@ -1,0 +1,43 @@
+# Build / runtime artifacts — recriados dentro da imagem
+node_modules
+.next
+out
+build
+dist
+coverage
+.turbo
+
+# Geração local do Prisma — o `prisma generate` roda no builder stage
+src/generated
+
+# Testes
+test-results
+playwright-report
+playwright/.cache
+
+# Segredos e config local — nunca devem entrar na imagem
+.env
+.env.*
+!.env.example
+
+# VCS / IDE / OS
+.git
+.gitignore
+.github
+.vscode
+.idea
+.DS_Store
+*.log
+npm-debug.log*
+
+# Docs e arquivos só de devtime
+README.md
+AGENTS.md
+CLAUDE.md
+docs
+
+# Protótipo de design (não vai pra runtime)
+franchise-ads-dashboard.jsx
+
+# TypeScript incremental
+*.tsbuildinfo

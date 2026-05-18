@@ -1,0 +1,92 @@
+# =========================================================================
+# compose.prod.yaml — self-host em VM Debian
+#
+# Topologia:
+#
+#   nginx (host, apt) ──► 127.0.0.1:3000 ──► app (container)
+#                                              │
+#                                              └─► postgres (container)
+#                                                  + volume persistente
+#
+# O app NÃO expõe a porta no 0.0.0.0 — só no loopback, pra forçar o tráfego
+# externo a passar por nginx (TLS + headers). O Postgres não expõe porta
+# alguma no host (só network interna do compose).
+#
+# Uso (na VM Debian):
+#   1. Copie .env.example pra .env e preencha (use openssl pra gerar secrets)
+#   2. docker compose -f compose.prod.yaml build
+#   3. docker compose -f compose.prod.yaml run --rm bootstrap     # 1ª vez
+#   4. docker compose -f compose.prod.yaml up -d                  # ergue app
+#   5. Configure nginx no host com proxy_pass http://127.0.0.1:3000
+#
+# Re-deploy (depois de `git pull`):
+#   docker compose -f compose.prod.yaml build app
+#   docker compose -f compose.prod.yaml run --rm bootstrap        # se houver migrations novas
+#   docker compose -f compose.prod.yaml up -d
+# =========================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?defina POSTGRES_DB no .env}
+      POSTGRES_USER: ${POSTGRES_USER:?defina POSTGRES_USER no .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # Sem `ports:` — Postgres só responde dentro da network interna.
+
+  app:
+    build:
+      context: .
+      target: runner
+    image: franchise-hub:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      DIRECT_URL:   postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:?defina AUTH_SECRET no .env}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:?defina NEXTAUTH_URL com sua URL pública}
+      AUTH_TRUST_HOST: "true"
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?defina ENCRYPTION_KEY no .env}
+      CRON_SECRET: ${CRON_SECRET:?defina CRON_SECRET no .env}
+      ADS_INTEGRATIONS_MODE: ${ADS_INTEGRATIONS_MODE:-mock}
+      GOOGLE_ADS_CLIENT_ID: ${GOOGLE_ADS_CLIENT_ID:-}
+      GOOGLE_ADS_CLIENT_SECRET: ${GOOGLE_ADS_CLIENT_SECRET:-}
+      GOOGLE_ADS_DEVELOPER_TOKEN: ${GOOGLE_ADS_DEVELOPER_TOKEN:-}
+      META_ADS_CLIENT_ID: ${META_ADS_CLIENT_ID:-}
+      META_ADS_CLIENT_SECRET: ${META_ADS_CLIENT_SECRET:-}
+      NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${NEXT_SERVER_ACTIONS_ENCRYPTION_KEY:-}
+    ports:
+      # Bind no loopback: só nginx do host alcança.
+      - "127.0.0.1:3000:3000"
+
+  # Container one-shot: aplica migrations + role + (opcional) seed e encerra.
+  # Roda com:  docker compose -f compose.prod.yaml run --rm bootstrap
+  # Pra incluir seed: ... run --rm bootstrap bash scripts/bootstrap.sh --seed
+  bootstrap:
+    build:
+      context: .
+      target: ops
+    image: franchise-hub-ops:latest
+    profiles: ["ops"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      DIRECT_URL:   postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+
+volumes:
+  postgres_data:

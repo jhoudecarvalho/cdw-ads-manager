@@ -397,6 +397,34 @@ Toda a camada visual foi reescrita seguindo o protótipo de design. **A arquitet
 
 **Aprendizado importante** já documentado: **funções não atravessam server→client component**. Aconteceu de novo no `SplitPieChart` (prop `format` era função). Solução adotada: presets string (`"currency" | "int"`) — quem decide é o servidor, quem aplica é o cliente.
 
+## Infra & deploy (Fase 9)
+
+Pacote completo pra rodar self-host numa VM Debian + Docker + nginx no host. Detalhes operacionais em [`docs/DEPLOY.md`](docs/DEPLOY.md).
+
+**Imagem Docker** (`Dockerfile`) — multi-stage Debian slim:
+
+| Stage     | Pra que serve                                                                    |
+| --------- | -------------------------------------------------------------------------------- |
+| `deps`    | `npm ci` completo, base pro builder/ops                                          |
+| `builder` | `prisma generate` + `next build` (output `standalone`)                           |
+| `runner`  | Imagem de produção mínima — só `.next/standalone` + `public` + `.next/static`, usuário não-root, HEALTHCHECK em `/api/health` |
+| `ops`     | Imagem irmã com `tsx` + Prisma CLI — usada pelo container one-shot `bootstrap` (migrate + role + seed) |
+
+`next.config.ts` ganhou `output: "standalone"` — o `runner` roda o `server.js` próprio do Next, sem precisar de `node_modules` inteiro.
+
+**`/api/health`** — `SELECT 1` no Postgres + JSON `{status, db, latencyMs}`. 200 ou 503. Usado pelo HEALTHCHECK do container e pelo nginx.
+
+**Compose**:
+
+- `compose.yaml` — dev local. Sobe só `postgres` (`docker compose up -d postgres`) pra ter alternativa ao Neon, ou app completo com `--profile full`.
+- `compose.prod.yaml` — self-host. App escutando em `127.0.0.1:3000` (só nginx do host alcança), Postgres sem porta exposta no host, volume nomeado pro DB, healthchecks com `depends_on: service_healthy`. Serviço `bootstrap` no profile `ops` pra `migrate deploy + setup-app-role + seed?`.
+
+**`scripts/bootstrap.sh`** — primeira inicialização (e re-runs idempotentes): aguarda Postgres, aplica migrations, garante role `franchise_hub_app` sem BYPASSRLS, seed opcional via `--seed`.
+
+**`.env.example`** — adicionado `PORT`/`HOSTNAME`, `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` (multi-instância), `POSTGRES_*` (consumidas pelo compose). Comentários explicam o que muda em prod (`AUTH_TRUST_HOST=true`, etc.).
+
+**`DEPLOY.md`** — passo a passo end-to-end: install Docker/nginx/certbot no Debian, clone + `.env`, build, bootstrap, nginx server block com `proxy_pass` + headers `X-Forwarded-*`, certbot pra Let's Encrypt, backup com `pg_dump` via cron, restore, rotação de segredos, troubleshooting, checklist de go-live.
+
 ## Status
 
 - **Fase 1 — Fundação e Multi-tenancy** ✓
@@ -407,4 +435,4 @@ Toda a camada visual foi reescrita seguindo o protótipo de design. **A arquitet
 - **Fase 6 — Dashboards** ✓
 - **Fase 7 — LGPD, segurança e testes** ✓
 - **Fase 8 — Refino visual** ✓ (porte fiel do `franchise-ads-dashboard.jsx`)
-- Próxima: **Mini-fase de infra** (docker-compose.prod.yml, Dockerfile, env files por ambiente, scripts de bootstrap)
+- **Fase 9 — Infra & deploy** ✓ (Docker multi-stage + compose self-host Debian + nginx + bootstrap)

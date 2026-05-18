@@ -1,0 +1,58 @@
+# =========================================================================
+# compose.yaml — desenvolvimento local
+#
+# Uso típico (dev: app no host com hot reload, banco no Docker):
+#   docker compose up -d postgres
+#   npm run dev
+#
+# Uso alternativo (app também no Docker — testa a imagem):
+#   docker compose --profile full up --build
+#
+# Para o setup de produção (self-host na VM Debian), use compose.prod.yaml.
+# =========================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-franchise_hub}
+      POSTGRES_USER: ${POSTGRES_USER:-franchise_hub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-franchise_hub_dev}
+    ports:
+      # Expõe no host pra dev local com `npm run dev` conectar via localhost.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-franchise_hub} -d ${POSTGRES_DB:-franchise_hub}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # App opcional — só sobe com `--profile full`. Útil pra validar a imagem
+  # localmente (mesma stack do prod, sem nginx).
+  app:
+    profiles: ["full"]
+    build:
+      context: .
+      target: runner
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-franchise_hub}:${POSTGRES_PASSWORD:-franchise_hub_dev}@postgres:5432/${POSTGRES_DB:-franchise_hub}?schema=public
+      DIRECT_URL:   postgresql://${POSTGRES_USER:-franchise_hub}:${POSTGRES_PASSWORD:-franchise_hub_dev}@postgres:5432/${POSTGRES_DB:-franchise_hub}?schema=public
+      AUTH_SECRET: ${AUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      AUTH_TRUST_HOST: "true"
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      CRON_SECRET: ${CRON_SECRET}
+      ADS_INTEGRATIONS_MODE: ${ADS_INTEGRATIONS_MODE:-mock}
+    ports:
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  postgres_data:
