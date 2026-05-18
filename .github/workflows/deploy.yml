@@ -9,7 +9,7 @@
 #                        ssh-keygen -t ed25519 -f deploy-key -N ""
 #                      e adicione a pública em ~/.ssh/authorized_keys na VM.
 #
-# Premissa: o checkout vive em /opt/franchise-hub na VM, e o primeiro
+# Premissa: o checkout vive em /root/cdw-ads-manager na VM, e o primeiro
 # bootstrap já rodou (role franchise_hub_app criado, APP_DATABASE_URL
 # colado no .env). Re-runs do bootstrap aqui só aplicam migrations novas
 # e revalidam o role — são idempotentes e não imprimem secrets de novo.
@@ -62,7 +62,7 @@ jobs:
         run: |
           ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash -se <<'REMOTE'
             set -euo pipefail
-            cd /opt/franchise-hub
+            cd /root/cdw-ads-manager
 
             echo "::group::git fetch + reset --hard origin/main"
             git fetch --prune origin
