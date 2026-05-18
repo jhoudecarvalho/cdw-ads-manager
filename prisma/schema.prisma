@@ -1,0 +1,40 @@
+// Franchise HUB — schema do banco
+// Documentação: https://pris.ly/d/prisma-schema
+//
+// Princípio multi-tenant: TODAS as tabelas de negócio terão `tenantId`,
+// `createdAt`, `updatedAt` e (onde fizer sentido) `deletedAt`. O isolamento é
+// reforçado por Row-Level Security do Postgres, ativado por migration manual
+// na Fase 3. O Tenant em si é a única tabela "global" — não tem `tenantId`.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+// Prisma 7+: `url`/`directUrl` saíram do schema. Conexão para o client vem do
+// adapter (src/server/db/prisma.ts); conexão para Migrate vem do
+// `datasource.url` em prisma.config.ts.
+datasource db {
+  provider = "postgresql"
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELED
+}
+
+model Tenant {
+  id           String       @id @default(cuid())
+  slug         String       @unique
+  name         String
+  status       TenantStatus @default(ACTIVE)
+  plan         String?
+  logoUrl      String?
+  primaryColor String?      @default("#7C3AED")
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  deletedAt    DateTime?
+
+  @@map("tenants")
+}
