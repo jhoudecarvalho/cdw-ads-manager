@@ -93,6 +93,16 @@
   --warning: #d97706;
   --danger: #dc2626;
   --radius: 0.625rem;
+
+  /* Aliases consumidos pelo shadcn ChartContainer — ele injeta
+     `--color-<key>: var(--chart-N)` inline, então os --chart-N precisam
+     existir fora do @theme (que só gera classes Tailwind, não vars CSS
+     globais). Sem isso os fills/strokes do Recharts viram preto em prod. */
+  --chart-1: var(--accent);
+  --chart-2: var(--accent-alt);
+  --chart-3: var(--success);
+  --chart-4: var(--warning);
+  --chart-5: var(--danger);
 }
 
 .dark {
@@ -112,6 +122,13 @@
   --success: #34d399;
   --warning: #fbbf24;
   --danger: #f87171;
+
+  /* Mesma motivação do bloco :root — ver comentário lá. */
+  --chart-1: var(--accent);
+  --chart-2: var(--accent-alt);
+  --chart-3: var(--success);
+  --chart-4: var(--warning);
+  --chart-5: var(--danger);
 }
 
 @layer base {
