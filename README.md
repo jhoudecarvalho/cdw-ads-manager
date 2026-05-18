@@ -228,21 +228,23 @@ Estado dos filtros vive na URL (`?platform=GOOGLE_ADS&region=...&franchise=...`)
 
 **3 implementações**:
 
-| Provider | Status | Uso |
-|---|---|---|
-| `MockAdsProvider` | ✓ completo | dev/CI sem APIs reais — determinístico (mesmas chamadas = mesmos dados) |
-| `GoogleAdsProvider` | esqueleto | precisa de `GOOGLE_ADS_CLIENT_ID/SECRET/DEVELOPER_TOKEN` + impl GAQL |
-| `MetaAdsProvider` | esqueleto | precisa de `META_ADS_CLIENT_ID/SECRET` + impl Marketing API |
+| Provider            | Status     | Uso                                                                     |
+| ------------------- | ---------- | ----------------------------------------------------------------------- |
+| `MockAdsProvider`   | ✓ completo | dev/CI sem APIs reais — determinístico (mesmas chamadas = mesmos dados) |
+| `GoogleAdsProvider` | esqueleto  | precisa de `GOOGLE_ADS_CLIENT_ID/SECRET/DEVELOPER_TOKEN` + impl GAQL    |
+| `MetaAdsProvider`   | esqueleto  | precisa de `META_ADS_CLIENT_ID/SECRET` + impl Marketing API             |
 
 Selecionado por `ADS_INTEGRATIONS_MODE=mock|live` no `.env`. `live` sem credenciais dispara `ProviderNotConfiguredError` no boot — falha rápido em vez de quebrar no meio do sync.
 
 **Criptografia em repouso** (`src/server/crypto/tokens.ts`):
+
 - AES-256-GCM, IV aleatório de 96 bits por chamada, auth tag de 128 bits
 - Prefixo de versão (`v1:...`) para suportar rotação futura
 - Chave em `ENCRYPTION_KEY` (base64 de 32 bytes — `openssl rand -base64 32`)
 - 5 testes: round-trip, IV aleatório, anti-tampering, versão desconhecida, null/undefined
 
 **Sync** (`src/server/ads/sync.ts`):
+
 - `syncAccount(tenantId, adAccountId, range?)` — sincroniza uma conta. Cria SyncLog (`RUNNING` → `SUCCESS`/`FAILED`)
 - `syncTenant(tenantId, range?)` — itera todas as `AdAccount` ativas do tenant, falha em uma não trava as outras
 - **Idempotente**: campanhas por upsert em `(adAccountId, externalId)`, métricas por `deleteMany + createMany` no range — rodar 2x produz o mesmo estado final
@@ -252,6 +254,7 @@ Selecionado por `ADS_INTEGRATIONS_MODE=mock|live` no `.env`. `live` sem credenci
 **Botão "Atualizar agora"** (`src/components/sync-button.tsx`) — Visão Geral, visível só pra ADMIN. Server action `runSyncAction(slug)` chama `syncTenant`, faz `revalidatePath` e devolve resumo.
 
 **Endpoint de cron** (`/api/cron/sync`):
+
 - Protegido por `Authorization: Bearer ${CRON_SECRET}`
 - Loop por todos os tenants ativos
 - Resposta JSON com resumo por tenant
@@ -265,6 +268,35 @@ Selecionado por `ADS_INTEGRATIONS_MODE=mock|live` no `.env`. `live` sem credenci
 3. Implemente os 3 métodos em `google-provider.ts` e `meta-provider.ts` (os stubs trazem comentários com os endpoints e shape esperado).
 4. Pronto — nenhum outro arquivo precisa mudar.
 
+## Dashboards (Fase 6)
+
+As 9 telas de Campanhas Ads são todas "ao vivo" agora — dados via `withTenantScope` (RLS), filtros do topo aplicados, role-aware:
+
+| Tela | Conteúdo |
+|---|---|
+| **Visão Geral** | 10 KPIs + line chart Investimento × Receita + split Google/Meta |
+| **Google Ads** | KPIs específicos + tendência diária + distribuição/ROAS por tipo (Search/PMax/Display) + top 10 campanhas |
+| **Meta Ads** | KPIs específicos + tendência + distribuição/ROAS por objetivo (Lead/Tráfego/Engagement) + top 10 |
+| **Campanhas** | Tabela completa de todas as campanhas, busca por nome/franquia/tipo, ordenação por 6 colunas, paginação 25/pág |
+| **Franquias** | Cards ordenados por ROAS (ranking #01, #02…), KPIs principais, barra de ROAS vs melhor da rede, split visual Google/Meta, busca + paginação |
+| **Regiões** | KPIs gerais + 2 bar charts (invest. e receita por região) + tabela comparativa com share % e linha de totais |
+| **Performance** | 6 KPIs avançados (taxa conv., receita/clique, CPC/CPM, CTR) + barras de share por tipo de campanha + tabela |
+| **Financeiro** | Custo/receita/lucro/margem/médias diárias + line chart triplo (custo/receita/lucro) — verde se lucro positivo, vermelho se negativo |
+| **Comparativo** | Google vs Meta lado a lado, 7 métricas comparadas com delta % (verde = ganhando, vermelho = perdendo) |
+
+**Loaders** (`src/server/metrics/*.ts`):
+- `shared.ts` — `buildMetricWhere/buildCampaignWhere/buildFranchiseWhere` + helpers (`num`, `safeDiv`, `dateSince`)
+- `dashboard.ts` (loadOverview), `by-platform.ts` (loadPlatformSlice), `campaigns-list.ts` (loadCampaignsList), `franchise-rankings.ts` (loadFranchiseRankings), `region-summary.ts` (loadRegionSummary), `performance.ts` (loadPerformance), `financial.ts` (loadFinancial), `comparison.ts` (loadComparison)
+- Todos respeitam `DashboardFilters` (platform/region/franchise vindos da URL) + escopo do ator
+
+**Componentes reutilizáveis**:
+- `LineTrendChart`, `DistributionBarChart`, `OverviewChart` (Recharts via shadcn ChartContainer)
+- `KpiCard`, `DashboardHeader` (consistência visual)
+- `src/lib/format.ts` (`brl`, `int`, `pct`, `multiplier`, `platformLabel`)
+- `src/lib/filters.ts` (`parseDashboardFilters` — normaliza URL → tipo)
+
+**Atenção dev**: funções não cruzam fronteira server → client component. Formatadores ficaram inline nos chart components em vez de prop `formatY` (que quebrava com `Functions cannot be passed directly to Client Components`).
+
 ## Status
 
 - **Fase 1 — Fundação e Multi-tenancy** ✓
@@ -272,4 +304,5 @@ Selecionado por `ADS_INTEGRATIONS_MODE=mock|live` no `.env`. `live` sem credenci
 - **Fase 3 — Modelos de negócio + RLS** ✓
 - **Fase 4 — Layout e navegação** ✓
 - **Fase 5 — Integrações Google + Meta Ads** ✓
-- Próxima: **Fase 6 — Dashboards** (preencher as 8 telas restantes de Campanhas Ads com Recharts e tabelas)
+- **Fase 6 — Dashboards** ✓
+- Próxima: **Fase 7 — LGPD, auditoria e testes** (headers de segurança, AuditLog ativo, exportação/anonimização de dados do titular, retenção, suíte Playwright)
