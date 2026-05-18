@@ -205,11 +205,11 @@ App shell em `[slug]/(app)/layout.tsx`: sidebar colapsável (shadcn/ui + base UI
 
 **Filtros do topo (role-aware)** — `src/components/top-bar.tsx` + `filter-bar.tsx`:
 
-| Papel | Plataforma | Região | Franquia |
-|---|---|---|---|
-| ADMIN | todas | todas do tenant | todas do tenant |
-| REGIONAL | todas | só as vinculadas | só dentro de suas regiões |
-| FRANCHISEE | todas | (oculto) | só a própria (estático, sem select) |
+| Papel      | Plataforma | Região           | Franquia                            |
+| ---------- | ---------- | ---------------- | ----------------------------------- |
+| ADMIN      | todas      | todas do tenant  | todas do tenant                     |
+| REGIONAL   | todas      | só as vinculadas | só dentro de suas regiões           |
+| FRANCHISEE | todas      | (oculto)         | só a própria (estático, sem select) |
 
 Estado dos filtros vive na URL (`?platform=GOOGLE_ADS&region=...&franchise=...`) — bookmarkável, compartilhável.
 
@@ -220,7 +220,50 @@ Estado dos filtros vive na URL (`?platform=GOOGLE_ADS&region=...&franchise=...`)
 - Cards Google Ads vs Meta Ads com share %
 - Todos calculados de queries scoped via `withTenantScope`, filtros aplicados, role aware
 
-**Defaults seguros**: se um REGIONAL ou FRANCHISEE forçar um `?region=...` ou `?franchise=...` fora do escopo, a query é forçada para "__forbidden__" → resultado vazio em vez de vazamento.
+**Defaults seguros**: se um REGIONAL ou FRANCHISEE forçar um `?region=...` ou `?franchise=...` fora do escopo, a query é forçada para "**forbidden**" → resultado vazio em vez de vazamento.
+
+## Integrações de Ads (Fase 5)
+
+**Interface comum** `AdsProvider` em `src/server/ads/provider.ts` — métodos `listCampaigns`, `getDailyMetrics`, `refreshToken`. Adicionar um provedor novo (TikTok, LinkedIn…) é implementar a interface e plugar no factory.
+
+**3 implementações**:
+
+| Provider | Status | Uso |
+|---|---|---|
+| `MockAdsProvider` | ✓ completo | dev/CI sem APIs reais — determinístico (mesmas chamadas = mesmos dados) |
+| `GoogleAdsProvider` | esqueleto | precisa de `GOOGLE_ADS_CLIENT_ID/SECRET/DEVELOPER_TOKEN` + impl GAQL |
+| `MetaAdsProvider` | esqueleto | precisa de `META_ADS_CLIENT_ID/SECRET` + impl Marketing API |
+
+Selecionado por `ADS_INTEGRATIONS_MODE=mock|live` no `.env`. `live` sem credenciais dispara `ProviderNotConfiguredError` no boot — falha rápido em vez de quebrar no meio do sync.
+
+**Criptografia em repouso** (`src/server/crypto/tokens.ts`):
+- AES-256-GCM, IV aleatório de 96 bits por chamada, auth tag de 128 bits
+- Prefixo de versão (`v1:...`) para suportar rotação futura
+- Chave em `ENCRYPTION_KEY` (base64 de 32 bytes — `openssl rand -base64 32`)
+- 5 testes: round-trip, IV aleatório, anti-tampering, versão desconhecida, null/undefined
+
+**Sync** (`src/server/ads/sync.ts`):
+- `syncAccount(tenantId, adAccountId, range?)` — sincroniza uma conta. Cria SyncLog (`RUNNING` → `SUCCESS`/`FAILED`)
+- `syncTenant(tenantId, range?)` — itera todas as `AdAccount` ativas do tenant, falha em uma não trava as outras
+- **Idempotente**: campanhas por upsert em `(adAccountId, externalId)`, métricas por `deleteMany + createMany` no range — rodar 2x produz o mesmo estado final
+- Tudo dentro de `withTenantScope` — RLS protege contra cross-tenant mesmo em bug do orquestrador
+- 3 testes contra Neon: primeira execução cria, segunda execução não duplica, `lastSyncAt` avança
+
+**Botão "Atualizar agora"** (`src/components/sync-button.tsx`) — Visão Geral, visível só pra ADMIN. Server action `runSyncAction(slug)` chama `syncTenant`, faz `revalidatePath` e devolve resumo.
+
+**Endpoint de cron** (`/api/cron/sync`):
+- Protegido por `Authorization: Bearer ${CRON_SECRET}`
+- Loop por todos os tenants ativos
+- Resposta JSON com resumo por tenant
+- Pode ser plugado em Vercel Cron, GitHub Actions, EasyCron, etc.
+- **Em produção** vira o "enfileirador" para BullMQ/Inngest — sequencial fica caro com N tenants
+
+### Quando ativar Google/Meta de verdade
+
+1. Configure `.env` com as credenciais reais (Google: precisa de developer_token aprovado).
+2. Mude `ADS_INTEGRATIONS_MODE="live"`.
+3. Implemente os 3 métodos em `google-provider.ts` e `meta-provider.ts` (os stubs trazem comentários com os endpoints e shape esperado).
+4. Pronto — nenhum outro arquivo precisa mudar.
 
 ## Status
 
@@ -228,4 +271,5 @@ Estado dos filtros vive na URL (`?platform=GOOGLE_ADS&region=...&franchise=...`)
 - **Fase 2 — Autenticação e Papéis** ✓
 - **Fase 3 — Modelos de negócio + RLS** ✓
 - **Fase 4 — Layout e navegação** ✓
-- Próxima: **Fase 5 — Integrações Google Ads + Meta Ads** (interface comum `AdsProvider`, modo mock primeiro, OAuth por franqueado, sync incremental, cron + "atualizar agora")
+- **Fase 5 — Integrações Google + Meta Ads** ✓
+- Próxima: **Fase 6 — Dashboards** (preencher as 8 telas restantes de Campanhas Ads com Recharts e tabelas)

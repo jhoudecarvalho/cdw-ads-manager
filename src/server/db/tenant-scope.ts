@@ -21,16 +21,33 @@ type TxClient = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
  * Hoje (Fase 1) só existe o `Tenant`, que NÃO tem RLS porque é a fonte da
  * verdade do tenant — quem o lê é o resolvedor de tenant, não o app.
  */
+export type TenantScopeOptions = {
+  /** ms para esperar por uma conexão livre do pool. Default 5000. */
+  maxWait?: number;
+  /** ms máximos para a transação executar. Default 10000. */
+  timeout?: number;
+};
+
 export async function withTenantScope<T>(
   tenantId: string,
   callback: (tx: TxClient) => Promise<T>,
+  opts: TenantScopeOptions = {},
 ): Promise<T> {
   if (!tenantId || typeof tenantId !== "string") {
     throw new Error("withTenantScope: tenantId obrigatório.");
   }
 
-  return prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
-    return callback(tx);
-  });
+  return prisma.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+      return callback(tx);
+    },
+    {
+      // Defaults mais folgados que os 2s/5s do Prisma — sync com muitos
+      // upserts via pooler precisa de margem. Rotas de página/dashboard
+      // chamam sem opts e ainda assim ganham mais respiro.
+      maxWait: opts.maxWait ?? 5_000,
+      timeout: opts.timeout ?? 10_000,
+    },
+  );
 }

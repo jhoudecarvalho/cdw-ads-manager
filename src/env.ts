@@ -33,6 +33,7 @@ const EnvSchema = z.object({
   AUTH_TRUST_HOST: optionalString,
 
   ENCRYPTION_KEY: optionalString,
+  CRON_SECRET: optionalString,
 
   GOOGLE_ADS_CLIENT_ID: optionalString,
   GOOGLE_ADS_CLIENT_SECRET: optionalString,

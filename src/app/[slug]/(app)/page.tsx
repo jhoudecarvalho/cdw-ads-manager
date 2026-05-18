@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { KpiCard } from "@/components/kpi-card";
 import { OverviewChart } from "@/components/overview-chart";
+import { SyncButton } from "@/components/sync-button";
 import { loadActorContext } from "@/server/auth/load-actor";
 import { loadOverview } from "@/server/metrics/dashboard";
 import type { Platform } from "@/generated/prisma/client";
@@ -37,11 +38,14 @@ export default async function VisaoGeralPage({ params, searchParams }: Props) {
 
   return (
     <div className="space-y-6 p-6">
-      <header>
-        <p className="text-xs uppercase tracking-widest text-muted-foreground">
-          {slug} · últimos {data.rangeDays} dias
-        </p>
-        <h1 className="mt-1 text-2xl font-semibold">Visão Geral</h1>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-widest text-muted-foreground">
+            {slug} · últimos {data.rangeDays} dias
+          </p>
+          <h1 className="mt-1 text-2xl font-semibold">Visão Geral</h1>
+        </div>
+        {actor.role === "ADMIN" && <SyncButton tenantSlug={slug} />}
       </header>
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
