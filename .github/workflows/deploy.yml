@@ -1,0 +1,103 @@
+# =========================================================================
+# Deploy automático — SSH na VM Debian, rebuild da imagem, up -d.
+#
+# Pré-requisitos (já configurados em Repository secrets):
+#   SSH_HOST         — IP ou hostname da VM
+#   SSH_PORT         — porta SSH (22 ou custom)
+#   SSH_USER         — usuário com acesso ao docker (no grupo `docker`)
+#   SSH_PRIVATE_KEY  — chave privada (PEM/OpenSSH). Gere com:
+#                        ssh-keygen -t ed25519 -f deploy-key -N ""
+#                      e adicione a pública em ~/.ssh/authorized_keys na VM.
+#
+# Premissa: o checkout vive em /opt/franchise-hub na VM, e o primeiro
+# bootstrap já rodou (role franchise_hub_app criado, APP_DATABASE_URL
+# colado no .env). Re-runs do bootstrap aqui só aplicam migrations novas
+# e revalidam o role — são idempotentes e não imprimem secrets de novo.
+# =========================================================================
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    # Mudanças que não afetam runtime não precisam de deploy.
+    paths-ignore:
+      - "**/*.md"
+      - ".gitignore"
+      - ".vscode/**"
+  workflow_dispatch:
+
+# 1 deploy por vez. Push em sequência rápida → o segundo enfileira em vez
+# de competir pelo docker daemon / Postgres.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: SSH + build na VM
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Configurar chave SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          # Evita prompt TOFU/StrictHostKeyChecking adicionando a chave
+          # pública do host pinada no known_hosts.
+          ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          ssh -i ~/.ssh/id_deploy -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash -se <<'REMOTE'
+            set -euo pipefail
+            cd /opt/franchise-hub
+
+            echo "::group::git fetch + reset --hard origin/main"
+            git fetch --prune origin
+            git reset --hard origin/main
+            git log -1 --oneline
+            echo "::endgroup::"
+
+            echo "::group::docker compose build (app + bootstrap)"
+            docker compose -f compose.prod.yaml build app bootstrap
+            echo "::endgroup::"
+
+            echo "::group::bootstrap (migrate deploy + setup-app-role)"
+            # Idempotente: sem --seed em prod. Aplica migrations novas e
+            # garante o role franchise_hub_app. Se já existe, não imprime
+            # a connection string de novo.
+            docker compose -f compose.prod.yaml run --rm bootstrap
+            echo "::endgroup::"
+
+            echo "::group::docker compose up -d"
+            docker compose -f compose.prod.yaml up -d
+            echo "::endgroup::"
+
+            echo "::group::aguardando /api/health"
+            for i in $(seq 1 30); do
+              if curl -fsS http://127.0.0.1:3000/api/health > /dev/null; then
+                echo "✓ healthy (após $((i * 2))s)"
+                # Limpa imagens antigas dangling pra não encher o disco
+                docker image prune -f > /dev/null || true
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "::endgroup::"
+
+            echo "::error::healthcheck falhou após 60s — últimas 100 linhas do app:"
+            docker compose -f compose.prod.yaml logs --tail=100 app
+            exit 1
+          REMOTE
