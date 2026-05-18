@@ -34,7 +34,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?defina POSTGRES_USER no .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # Postgres 18+ usa subdir por major version (/var/lib/postgresql/<major>/docker/).
+      # Mount no diretório pai pra encontrar o layout correto. Ver docker-library/postgres#1259.
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
