@@ -1,5 +1,15 @@
 import { redirect } from "next/navigation";
+import type { CSSProperties } from "react";
 import { auth } from "@/auth";
+import { AppSidebar } from "@/components/app-sidebar";
+import { TopBar } from "@/components/top-bar";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
+import { loadActorContext } from "@/server/auth/load-actor";
 import { getTenantBySlug } from "@/server/tenant/resolver";
 
 type Props = {
@@ -8,15 +18,19 @@ type Props = {
 };
 
 /**
- * Guard de sessão para a área autenticada do tenant.
+ * App shell autenticado.
  *
- * 1. Sem sessão → redirect para /{slug}/login
- * 2. Sessão de outro tenant → redirect para login do tenant correto (e
- *    eventualmente força signOut na própria página). NUNCA mostra dados de
- *    um tenant para sessão de outro.
+ * Guard de sessão:
+ *   1. Sem sessão → /{slug}/login
+ *   2. Sessão de outro tenant → /{slug}/login (no futuro: tela "trocar de
+ *      conta" com signOut)
  *
- * O `[slug]/layout.tsx` pai já validou que o tenant existe; aqui só
- * cuidamos da autorização.
+ * Acima de cada filho monta: sidebar (com logo dinâmico do tenant + nav),
+ * top bar (com filtros de plataforma/região/franquia respeitando o papel
+ * do usuário), e área de conteúdo.
+ *
+ * A cor primária do tenant entra como variável CSS `--tenant-primary`,
+ * disponível em qualquer descendente para acentos visuais.
  */
 export default async function AuthenticatedLayout({ children, params }: Props) {
   const { slug } = await params;
@@ -28,11 +42,33 @@ export default async function AuthenticatedLayout({ children, params }: Props) {
 
   const tenant = await getTenantBySlug(slug);
   if (!tenant || session.user.tenantId !== tenant.id) {
-    // Sessão é de outro tenant. Por enquanto manda para o login do tenant
-    // certo — o ideal (a fazer): exibir tela "você está logado em outro
-    // tenant, deseja trocar?" com botão de signOut.
     redirect(`/${slug}/login`);
   }
 
-  return <>{children}</>;
+  const actor = await loadActorContext(session);
+
+  const tenantStyle = tenant.primaryColor
+    ? ({ "--tenant-primary": tenant.primaryColor } as CSSProperties)
+    : undefined;
+
+  return (
+    <SidebarProvider style={tenantStyle}>
+      <AppSidebar
+        tenantSlug={tenant.slug}
+        tenantName={tenant.name}
+        tenantLogoUrl={tenant.logoUrl}
+        userEmail={session.user.email ?? ""}
+        userName={session.user.name ?? null}
+        userRole={session.user.role}
+      />
+      <SidebarInset>
+        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur">
+          <SidebarTrigger />
+          <Separator orientation="vertical" className="mx-1 h-5" />
+          <TopBar tenantId={tenant.id} actor={actor} />
+        </header>
+        <main className="flex-1 overflow-x-hidden">{children}</main>
+      </SidebarInset>
+    </SidebarProvider>
+  );
 }

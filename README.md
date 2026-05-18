@@ -169,33 +169,63 @@ proxy.ts                       # ex-middleware (Next 16)
 
 **Testes de isolamento contra Neon real** (`tests/tenant-isolation.test.ts`):
 
-| Cenário | Resultado |
-|---|---|
-| `SELECT` sem `withTenantScope` | retorna 0 linhas |
-| `SELECT` scoped em A | só vê dados de A |
-| `findUnique` por id de B, scoped em A | retorna `null` |
+| Cenário                                   | Resultado         |
+| ----------------------------------------- | ----------------- |
+| `SELECT` sem `withTenantScope`            | retorna 0 linhas  |
+| `SELECT` scoped em A                      | só vê dados de A  |
+| `findUnique` por id de B, scoped em A     | retorna `null`    |
 | `INSERT` com `tenantId` de B, scoped em A | erro (WITH CHECK) |
-| `UPDATE`/`DELETE` cross-tenant | 0 linhas afetadas |
+| `UPDATE`/`DELETE` cross-tenant            | 0 linhas afetadas |
 
 **Helpers**:
+
 - `withTenantScope(tenantId, callback)` — transação com `set_config` (`src/server/db/tenant-scope.ts`)
 - `loadActorContext(session)` — popula `franchiseIds`/`regionIds` para `can()` (`src/server/auth/load-actor.ts`)
 
 **Volume do seed** (default `SEED_FRANCHISES_PER_TENANT=12`):
 
-| Por tenant | Quantidade |
-|---|---|
-| Regiões | 5 (Sul, Sudeste, Centro-Oeste, Nordeste, Norte) |
-| Franquias | 12 (distribuídas pelas regiões, cidades reais por UF) |
-| AdAccounts | 24 (Google + Meta por franquia) |
-| Campanhas | 72 (3 por AdAccount) |
-| Métricas diárias | 1.008 (14 dias × 72 campanhas) |
+| Por tenant       | Quantidade                                            |
+| ---------------- | ----------------------------------------------------- |
+| Regiões          | 5 (Sul, Sudeste, Centro-Oeste, Nordeste, Norte)       |
+| Franquias        | 12 (distribuídas pelas regiões, cidades reais por UF) |
+| AdAccounts       | 24 (Google + Meta por franquia)                       |
+| Campanhas        | 72 (3 por AdAccount)                                  |
+| Métricas diárias | 1.008 (14 dias × 72 campanhas)                        |
 
 Para mais volume: `SEED_FRANCHISES_PER_TENANT=150 npm run db:seed`.
+
+## Layout e navegação (Fase 4)
+
+App shell em `[slug]/(app)/layout.tsx`: sidebar colapsável (shadcn/ui + base UI), top bar com filtros e logo dinâmico do tenant. Cor primária do tenant injetada como CSS var `--tenant-primary`. Mobile: sidebar vira sheet ao clicar no trigger.
+
+**Menu** (definido em `src/server/navigation.ts`):
+
+- 📣 **Campanhas Ads** (grupo expansível, default aberto): Visão Geral, Google Ads, Meta Ads, Campanhas, Franquias, Regiões, Performance, Financeiro, Comparativo
+- 🦎 Dados Ecocentauro · 🤝 Programa Indicação · 🔄 Sellflux · 🌐 Landing Page — todos com badge **BREVE**
+
+**Filtros do topo (role-aware)** — `src/components/top-bar.tsx` + `filter-bar.tsx`:
+
+| Papel | Plataforma | Região | Franquia |
+|---|---|---|---|
+| ADMIN | todas | todas do tenant | todas do tenant |
+| REGIONAL | todas | só as vinculadas | só dentro de suas regiões |
+| FRANCHISEE | todas | (oculto) | só a própria (estático, sem select) |
+
+Estado dos filtros vive na URL (`?platform=GOOGLE_ADS&region=...&franchise=...`) — bookmarkável, compartilhável.
+
+**Visão Geral** já é tela viva:
+
+- 10 KPIs (Investimento, Receita, ROAS, Conversões, Custo/Conv, Impressões, Cliques, CTR, CPC, CPM)
+- Gráfico Recharts Investimento vs Receita (14 dias)
+- Cards Google Ads vs Meta Ads com share %
+- Todos calculados de queries scoped via `withTenantScope`, filtros aplicados, role aware
+
+**Defaults seguros**: se um REGIONAL ou FRANCHISEE forçar um `?region=...` ou `?franchise=...` fora do escopo, a query é forçada para "__forbidden__" → resultado vazio em vez de vazamento.
 
 ## Status
 
 - **Fase 1 — Fundação e Multi-tenancy** ✓
 - **Fase 2 — Autenticação e Papéis** ✓
 - **Fase 3 — Modelos de negócio + RLS** ✓
-- Próxima: **Fase 4 — Layout e navegação** (sidebar dark, menu Campanhas Ads, dashboards Recharts, placeholders dos módulos "BREVE")
+- **Fase 4 — Layout e navegação** ✓
+- Próxima: **Fase 5 — Integrações Google Ads + Meta Ads** (interface comum `AdsProvider`, modo mock primeiro, OAuth por franqueado, sync incremental, cron + "atualizar agora")
