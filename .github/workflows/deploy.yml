@@ -70,14 +70,25 @@ jobs:
             git log -1 --oneline
             echo "::endgroup::"
 
+            echo "::group::tag imagem atual como :rollback"
+            # Salva a imagem em execução pra rollback se o deploy quebrar.
+            # Na primeira subida ainda não existe — segue silenciosamente.
+            if docker image inspect franchise-hub:latest > /dev/null 2>&1; then
+              docker image tag franchise-hub:latest franchise-hub:rollback
+              echo "✓ franchise-hub:latest → franchise-hub:rollback"
+            else
+              echo "(sem imagem anterior — primeira subida)"
+            fi
+            echo "::endgroup::"
+
             echo "::group::docker compose build (app + bootstrap)"
             docker compose -f compose.prod.yaml build app bootstrap
             echo "::endgroup::"
 
             echo "::group::bootstrap (migrate deploy + setup-app-role)"
             # Idempotente: sem --seed em prod. Aplica migrations novas e
-            # garante o role franchise_hub_app. Se já existe, não imprime
-            # a connection string de novo.
+            # garante o role franchise_hub_app sem rotacionar a senha
+            # (setup-app-role.ts preserva a senha em re-runs).
             docker compose -f compose.prod.yaml run --rm bootstrap
             echo "::endgroup::"
 
@@ -86,18 +97,46 @@ jobs:
             echo "::endgroup::"
 
             echo "::group::aguardando /api/health"
+            HEALTHY=0
             for i in $(seq 1 30); do
               if curl -fsS http://127.0.0.1:3000/api/health > /dev/null; then
                 echo "✓ healthy (após $((i * 2))s)"
-                # Limpa imagens antigas dangling pra não encher o disco
-                docker image prune -f > /dev/null || true
-                exit 0
+                HEALTHY=1
+                break
               fi
               sleep 2
             done
             echo "::endgroup::"
 
-            echo "::error::healthcheck falhou após 60s — últimas 100 linhas do app:"
-            docker compose -f compose.prod.yaml logs --tail=100 app
+            if [[ $HEALTHY -eq 1 ]]; then
+              # Limpa imagens dangling. A :rollback continua tagueada — preserva.
+              docker image prune -f > /dev/null || true
+              exit 0
+            fi
+
+            echo "::error::healthcheck falhou após 60s — iniciando rollback"
+            echo "::group::logs do app (últimas 100 linhas)"
+            docker compose -f compose.prod.yaml logs --tail=100 app || true
+            echo "::endgroup::"
+
+            if docker image inspect franchise-hub:rollback > /dev/null 2>&1; then
+              echo "::group::rollback automático pra imagem anterior"
+              docker image tag franchise-hub:rollback franchise-hub:latest
+              docker compose -f compose.prod.yaml up -d --force-recreate app
+              for i in $(seq 1 30); do
+                if curl -fsS http://127.0.0.1:3000/api/health > /dev/null; then
+                  echo "✓ rollback OK — site no ar com versão anterior (após $((i * 2))s)"
+                  echo "::endgroup::"
+                  # Falha o workflow de propósito — o commit precisa ser corrigido,
+                  # mesmo que o rollback tenha restaurado o site.
+                  exit 1
+                fi
+                sleep 2
+              done
+              echo "::error::rollback também não respondeu em 60s — intervenção manual"
+              echo "::endgroup::"
+            else
+              echo "::error::sem imagem :rollback (primeira subida?) — site fora do ar"
+            fi
             exit 1
           REMOTE
