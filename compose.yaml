@@ -43,7 +43,12 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-franchise_hub}:${POSTGRES_PASSWORD:-franchise_hub_dev}@postgres:5432/${POSTGRES_DB:-franchise_hub}?schema=public
+      # APP_DATABASE_URL aponta pro role `franchise_hub_app` (sem BYPASSRLS) —
+      # impressa pelo `setup-app-role.ts` durante o bootstrap. Fallback pro
+      # owner serve só pra primeiros runs antes do role existir; nesse modo
+      # as policies de RLS são bypassed.
+      DATABASE_URL: "${APP_DATABASE_URL:-postgresql://${POSTGRES_USER:-franchise_hub}:${POSTGRES_PASSWORD:-franchise_hub_dev}@postgres:5432/${POSTGRES_DB:-franchise_hub}?schema=public}"
+      # DIRECT_URL continua no owner — Prisma Migrate precisa de CREATE/ALTER.
       DIRECT_URL:   postgresql://${POSTGRES_USER:-franchise_hub}:${POSTGRES_PASSWORD:-franchise_hub_dev}@postgres:5432/${POSTGRES_DB:-franchise_hub}?schema=public
       AUTH_SECRET: ${AUTH_SECRET}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}

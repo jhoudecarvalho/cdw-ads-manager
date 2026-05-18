@@ -39,11 +39,11 @@ ADMIN_URL="${DIRECT_URL:-$DATABASE_URL}"
 echo "→ Aguardando Postgres responder..."
 ATTEMPTS=0
 MAX_ATTEMPTS=60
-until node -e "
+until ADMIN_URL="$ADMIN_URL" node -e "
   const { Client } = require('pg');
   const c = new Client({ connectionString: process.env.ADMIN_URL });
   c.connect().then(() => c.query('SELECT 1')).then(() => c.end()).catch(e => { process.exit(1); });
-" ADMIN_URL="$ADMIN_URL" 2>/dev/null; do
+" 2>/dev/null; do
   ATTEMPTS=$((ATTEMPTS + 1))
   if [[ $ATTEMPTS -ge $MAX_ATTEMPTS ]]; then
     echo "ERRO: Postgres não respondeu após ${MAX_ATTEMPTS}s." >&2
