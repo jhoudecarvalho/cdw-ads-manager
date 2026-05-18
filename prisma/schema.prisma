@@ -24,6 +24,12 @@ enum TenantStatus {
   CANCELED
 }
 
+enum UserRole {
+  ADMIN       // matriz: vê tudo do tenant
+  REGIONAL    // gestor regional: vê franquias de suas regiões
+  FRANCHISEE  // franqueado: vê só a própria franquia
+}
+
 model Tenant {
   id           String       @id @default(cuid())
   slug         String       @unique
@@ -36,5 +42,52 @@ model Tenant {
   updatedAt    DateTime     @updatedAt
   deletedAt    DateTime?
 
+  users User[]
+
   @@map("tenants")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  tenantId      String
+  email         String
+  emailVerified DateTime?
+  name          String?
+  // passwordHash é null quando o usuário só usa login social (Fase futura).
+  passwordHash  String?
+  role          UserRole  @default(FRANCHISEE)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  termsAcceptances TermsAcceptance[]
+
+  // E-mail é único por tenant — o mesmo e-mail pode existir em tenants
+  // diferentes (uma franqueadora pode ter o mesmo gerente que outra).
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+/// Registro versionado de aceite de Termos/Política (LGPD).
+/// Cada nova versão de documento gera uma nova linha — não atualizamos a
+/// antiga, para preservar a trilha de auditoria.
+model TermsAcceptance {
+  id          String   @id @default(cuid())
+  tenantId    String
+  userId      String
+  documentKey String // "terms_of_use" | "privacy_policy" | …
+  version     String
+  acceptedAt  DateTime @default(now())
+  ipAddress   String?
+  userAgent   String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([documentKey, version])
+  @@map("terms_acceptances")
 }

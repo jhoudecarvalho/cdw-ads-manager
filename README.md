@@ -143,7 +143,24 @@ src/
 proxy.ts                       # ex-middleware (Next 16)
 ```
 
+## Autenticação (Fase 2)
+
+- Auth.js v5 com Credentials provider + JWT (Credentials não permite DB sessions)
+- Login e signup **por tenant**: `/{slug}/login`, `/{slug}/signup`
+- Cadastro registra aceite versionado de Termos e Política (LGPD) — em `terms_acceptances`
+- Guard de sessão em `[slug]/(app)/layout.tsx`: sem sessão → redirect, sessão de outro tenant → redirect
+- Função central `can(actor, action, resource)` em `src/server/auth/can.ts` (35 testes unitários)
+- Primeiro usuário cadastrado de cada tenant vira ADMIN automaticamente
+
+### Usuários de exemplo (após `npm run db:seed`)
+
+| Tenant | E-mail | Senha |
+|---|---|---|
+| anjos | `admin@anjos.test` | `dev-anjos-123` |
+| kgepel | `admin@kgepel.test` | `dev-kgepel-123` |
+
 ## Status
 
-- **Fase 1 — Fundação e Multi-tenancy** ✓ concluída
-- Próxima: **Fase 2 — Autenticação e Papéis** (NextAuth + ADMIN/REGIONAL/FRANCHISEE)
+- **Fase 1 — Fundação e Multi-tenancy** ✓
+- **Fase 2 — Autenticação e Papéis** ✓
+- Próxima: **Fase 3 — Modelos de negócio + RLS** (Region, Franchise, AdAccount, Campaign, CampaignMetricDaily + policies do Postgres)

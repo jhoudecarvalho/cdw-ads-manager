@@ -25,8 +25,12 @@ const EnvSchema = z.object({
   DATABASE_URL: z.string().url(),
   DIRECT_URL: optionalUrl,
 
+  // Auth.js v5 aceita AUTH_SECRET ou NEXTAUTH_SECRET; aceitamos os dois e o
+  // boot exige pelo menos um quando NODE_ENV !== "test".
   NEXTAUTH_SECRET: optionalString,
   NEXTAUTH_URL: optionalUrl,
+  AUTH_SECRET: optionalString,
+  AUTH_TRUST_HOST: optionalString,
 
   ENCRYPTION_KEY: optionalString,
 

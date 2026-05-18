@@ -1,0 +1,192 @@
+"use server";
+
+import { AuthError } from "next-auth";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { z } from "zod";
+import bcrypt from "bcryptjs";
+import { signIn } from "@/auth";
+import { prisma } from "@/server/db/prisma";
+import { isValidTenantSlug } from "@/server/tenant/slug";
+import { DOCUMENT_VERSIONS } from "./terms";
+
+export type FormState = {
+  ok: boolean;
+  error?: string;
+  fieldErrors?: Record<string, string>;
+};
+
+const LoginSchema = z.object({
+  email: z.string().email("E-mail inválido"),
+  password: z.string().min(1, "Informe a senha"),
+});
+
+const SignupSchema = z
+  .object({
+    name: z.string().min(2, "Mínimo 2 caracteres").max(120),
+    email: z.string().email("E-mail inválido"),
+    password: z.string().min(8, "Mínimo 8 caracteres"),
+    confirmPassword: z.string(),
+    acceptTerms: z.literal("on", {
+      message: "Você precisa aceitar os Termos de Uso",
+    }),
+    acceptPrivacy: z.literal("on", {
+      message: "Você precisa aceitar a Política de Privacidade",
+    }),
+  })
+  .refine((d) => d.password === d.confirmPassword, {
+    message: "As senhas não conferem",
+    path: ["confirmPassword"],
+  });
+
+function toFieldErrors(err: z.ZodError): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const issue of err.issues) {
+    const k = issue.path.join(".") || "_form";
+    out[k] ??= issue.message;
+  }
+  return out;
+}
+
+export async function loginAction(
+  tenantSlug: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  if (!isValidTenantSlug(tenantSlug)) {
+    return { ok: false, error: "Tenant inválido." };
+  }
+
+  const parsed = LoginSchema.safeParse({
+    email: formData.get("email"),
+    password: formData.get("password"),
+  });
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: toFieldErrors(parsed.error) };
+  }
+
+  try {
+    await signIn("credentials", {
+      email: parsed.data.email.toLowerCase(),
+      password: parsed.data.password,
+      tenantSlug,
+      redirect: false,
+    });
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return { ok: false, error: "E-mail ou senha incorretos." };
+    }
+    throw err;
+  }
+
+  redirect(`/${tenantSlug}`);
+}
+
+export async function signupAction(
+  tenantSlug: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  if (!isValidTenantSlug(tenantSlug)) {
+    return { ok: false, error: "Tenant inválido." };
+  }
+
+  const parsed = SignupSchema.safeParse({
+    name: formData.get("name"),
+    email: formData.get("email"),
+    password: formData.get("password"),
+    confirmPassword: formData.get("confirmPassword"),
+    acceptTerms: formData.get("acceptTerms"),
+    acceptPrivacy: formData.get("acceptPrivacy"),
+  });
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: toFieldErrors(parsed.error) };
+  }
+
+  const tenant = await prisma.tenant.findFirst({
+    where: { slug: tenantSlug, status: "ACTIVE", deletedAt: null },
+    select: { id: true },
+  });
+  if (!tenant) return { ok: false, error: "Tenant não encontrado." };
+
+  const email = parsed.data.email.toLowerCase();
+
+  const existing = await prisma.user.findFirst({
+    where: { tenantId: tenant.id, email },
+    select: { id: true },
+  });
+  if (existing) {
+    return {
+      ok: false,
+      fieldErrors: { email: "Já existe uma conta com este e-mail." },
+    };
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.password, 12);
+  const h = await headers();
+  const ipAddress =
+    h.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    h.get("x-real-ip") ??
+    null;
+  const userAgent = h.get("user-agent") ?? null;
+
+  // Primeiro usuário cadastrado do tenant vira ADMIN. Os próximos viram
+  // FRANCHISEE por default — convite com role definida virá em uma
+  // funcionalidade futura.
+  const userCount = await prisma.user.count({
+    where: { tenantId: tenant.id },
+  });
+  const role = userCount === 0 ? "ADMIN" : "FRANCHISEE";
+
+  await prisma.user.create({
+    data: {
+      tenantId: tenant.id,
+      email,
+      name: parsed.data.name,
+      passwordHash,
+      role,
+      termsAcceptances: {
+        create: [
+          {
+            tenantId: tenant.id,
+            documentKey: "terms_of_use",
+            version: DOCUMENT_VERSIONS.terms_of_use,
+            ipAddress,
+            userAgent,
+          },
+          {
+            tenantId: tenant.id,
+            documentKey: "privacy_policy",
+            version: DOCUMENT_VERSIONS.privacy_policy,
+            ipAddress,
+            userAgent,
+          },
+        ],
+      },
+    },
+  });
+
+  try {
+    await signIn("credentials", {
+      email,
+      password: parsed.data.password,
+      tenantSlug,
+      redirect: false,
+    });
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return {
+        ok: false,
+        error: "Conta criada, mas o login automático falhou. Tente entrar.",
+      };
+    }
+    throw err;
+  }
+
+  redirect(`/${tenantSlug}`);
+}
+
+export async function logoutAction(tenantSlug: string) {
+  const { signOut } = await import("@/auth");
+  await signOut({ redirectTo: `/${tenantSlug}/login` });
+}
