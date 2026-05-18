@@ -4,8 +4,9 @@ export default function LandingPagePage() {
   return (
     <ComingSoon
       title="Landing Page"
-      description="Construtor / gestão de landing pages por franquia. Especificação a definir."
-      phase="BREVE"
+      icon="🌐"
+      description="Gerencie e monitore as landing pages de cada franquia. Acompanhe taxas de conversão, testes A/B, formulários e performance de cada página de destino."
+      phase="Em desenvolvimento"
     />
   );
 }

@@ -1,133 +1,191 @@
 import { auth } from "@/auth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ApiInfoFooter } from "@/components/api-info-footer";
+import { AreaTrendChart } from "@/components/charts/area-trend-chart";
+import { ConversionBars } from "@/components/charts/conversion-bars";
+import { RegionRadar } from "@/components/charts/region-radar";
+import { SplitPieChart } from "@/components/charts/split-pie-chart";
+import { ChartCard } from "@/components/chart-card";
 import { KpiCard } from "@/components/kpi-card";
-import { OverviewChart } from "@/components/overview-chart";
 import { SyncButton } from "@/components/sync-button";
+import { brl, int, multiplier, pct } from "@/lib/format";
+import { parseDashboardFilters } from "@/lib/filters";
 import { loadActorContext } from "@/server/auth/load-actor";
 import { loadOverview } from "@/server/metrics/dashboard";
-import type { Platform } from "@/generated/prisma/client";
 
 type Props = {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{
-    platform?: string;
-    region?: string;
-    franchise?: string;
-  }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 };
-
-const PLATFORMS = new Set<Platform>(["GOOGLE_ADS", "META_ADS"]);
 
 export default async function VisaoGeralPage({ params, searchParams }: Props) {
   const [{ slug }, sp] = await Promise.all([params, searchParams]);
   const session = await auth();
   const actor = await loadActorContext(session!);
-
-  const platform =
-    sp.platform && PLATFORMS.has(sp.platform as Platform)
-      ? (sp.platform as Platform)
-      : null;
-  const filters = {
-    platform,
-    regionId: sp.region ?? null,
-    franchiseId: sp.franchise ?? null,
-  };
-
+  const filters = parseDashboardFilters(sp);
   const data = await loadOverview(actor.tenantId, actor, filters);
   const t = data.totals;
 
   return (
-    <div className="space-y-6 p-6">
-      <header className="flex flex-wrap items-end justify-between gap-3">
+    <div className="space-y-5 p-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-widest text-muted-foreground">
+          <p className="font-mono text-[10px] uppercase tracking-[1.5px] text-text-muted">
             {slug} · últimos {data.rangeDays} dias
           </p>
-          <h1 className="mt-1 text-2xl font-semibold">Visão Geral</h1>
+          <h1 className="mt-1 text-xl font-extrabold">📊 Visão Geral</h1>
         </div>
         {actor.role === "ADMIN" && <SyncButton tenantSlug={slug} />}
-      </header>
+      </div>
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <KpiCard label="Investimento" value={brl(t.spend)} />
-        <KpiCard label="Receita" value={brl(t.revenue)} />
-        <KpiCard label="ROAS" value={`${t.roas.toFixed(2)}x`} />
-        <KpiCard label="Conversões" value={num0(t.conversions)} />
-        <KpiCard label="Custo / Conv." value={brl(t.costPerConversion)} />
-        <KpiCard label="Impressões" value={num0(t.impressions)} />
-        <KpiCard label="Cliques" value={num0(t.clicks)} />
-        <KpiCard label="CTR" value={`${t.ctr.toFixed(2)}%`} />
-        <KpiCard label="CPC" value={brl(t.cpc)} />
-        <KpiCard label="CPM" value={brl(t.cpm)} />
-      </section>
+      {/* KPI grid — 12 cards no estilo do design */}
+      <div className="grid auto-rows-fr gap-3 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+        <KpiCard
+          label="Investimento Total"
+          value={brl(t.spend)}
+          icon="💰"
+          color="var(--accent)"
+          subValue={`${int(t.totalCampaigns)} campanhas`}
+        />
+        <KpiCard
+          label="Impressões"
+          value={int(t.impressions)}
+          icon="👁"
+          color="var(--accent-alt)"
+        />
+        <KpiCard
+          label="Cliques"
+          value={int(t.clicks)}
+          icon="🖱"
+          color="var(--google)"
+        />
+        <KpiCard
+          label="Conversões"
+          value={int(t.conversions)}
+          icon="🎯"
+          color="var(--success)"
+        />
+        <KpiCard
+          label="Receita Ads"
+          value={brl(t.revenue)}
+          icon="📈"
+          color="var(--warning)"
+        />
+        <KpiCard
+          label="ROAS Geral"
+          value={multiplier(t.roas)}
+          icon="⚡"
+          color={t.roas >= 3 ? "var(--success)" : "var(--warning)"}
+        />
+        <KpiCard
+          label="CTR Médio"
+          value={pct(t.ctr)}
+          icon="📊"
+          color="var(--accent)"
+        />
+        <KpiCard
+          label="CPC Médio"
+          value={brl(t.cpc, 2)}
+          icon="💳"
+          color="var(--meta-light)"
+        />
+        <KpiCard
+          label="CPM Médio"
+          value={brl(t.cpm, 2)}
+          icon="📢"
+          color="var(--accent-alt)"
+        />
+        <KpiCard
+          label="Custo / Conv."
+          value={brl(t.costPerConversion)}
+          icon="🏷"
+          color="var(--danger)"
+        />
+        <KpiCard
+          label="Alcance"
+          value={int(t.reach)}
+          icon="🌐"
+          color="var(--google)"
+        />
+        <KpiCard
+          label="Campanhas Ativas"
+          value={int(t.activeCampaigns)}
+          icon="🔄"
+          subValue={`de ${int(t.totalCampaigns)} totais`}
+        />
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            Investimento vs Receita — últimos {data.rangeDays} dias
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+      {/* Row 1: AreaChart 30 dias + Pie split */}
+      <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+        <ChartCard title="📈 Investimento Diário" height={260}>
           {data.byDay.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              Sem dados para os filtros atuais.
-            </p>
+            <Empty />
           ) : (
-            <OverviewChart data={data.byDay} />
+            <AreaTrendChart
+              data={data.byDay}
+              formatY="currency-k"
+              series={[
+                {
+                  key: "googleSpend",
+                  label: "Google Ads",
+                  color: "var(--google)",
+                },
+                { key: "metaSpend", label: "Meta Ads", color: "var(--meta)" },
+              ]}
+            />
           )}
-        </CardContent>
-      </Card>
+        </ChartCard>
 
-      <section className="grid gap-3 md:grid-cols-2">
-        {data.byPlatform.map((p) => (
-          <Card key={p.platform}>
-            <CardHeader>
-              <CardTitle className="text-base">
-                {p.platform === "GOOGLE_ADS" ? "Google Ads" : "Meta Ads"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl className="grid grid-cols-2 gap-3 text-sm">
-                <Stat label="Investimento" value={brl(p.spend)} />
-                <Stat label="Receita" value={brl(p.revenue)} />
-                <Stat
-                  label="ROAS"
-                  value={`${p.spend > 0 ? (p.revenue / p.spend).toFixed(2) : "0.00"}x`}
-                />
-                <Stat
-                  label="Share"
-                  value={`${
-                    t.spend > 0 ? ((p.spend / t.spend) * 100).toFixed(0) : 0
-                  }%`}
-                />
-              </dl>
-            </CardContent>
-          </Card>
-        ))}
-      </section>
+        <ChartCard title="💰 Split Investimento" height={260}>
+          {data.byPlatform.length === 0 ? (
+            <Empty />
+          ) : (
+            <SplitPieChart
+              data={data.byPlatform.map((p) => ({
+                name: p.platform === "GOOGLE_ADS" ? "Google Ads" : "Meta Ads",
+                value: p.spend,
+                color:
+                  p.platform === "GOOGLE_ADS" ? "var(--google)" : "var(--meta)",
+              }))}
+              format="currency"
+            />
+          )}
+        </ChartCard>
+      </div>
+
+      {/* Row 2: Conversões diárias + Radar regiões */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ChartCard title="🎯 Conversões Diárias" height={220}>
+          {data.byDay.length === 0 ? (
+            <Empty />
+          ) : (
+            <ConversionBars
+              data={data.byDay.map((d) => ({
+                date: d.date,
+                google: d.googleConv,
+                meta: d.metaConv,
+              }))}
+            />
+          )}
+        </ChartCard>
+
+        <ChartCard title="🗺️ Performance por Região" height={220}>
+          {data.byRegion.length === 0 ? (
+            <Empty />
+          ) : (
+            <RegionRadar data={data.byRegion} />
+          )}
+        </ChartCard>
+      </div>
+
+      <ApiInfoFooter />
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Empty() {
   return (
-    <div>
-      <dt className="text-xs uppercase tracking-widest text-muted-foreground">
-        {label}
-      </dt>
-      <dd className="mt-0.5 text-base font-medium tabular-nums">{value}</dd>
+    <div className="flex h-full items-center justify-center text-sm text-text-muted">
+      Sem dados para os filtros atuais.
     </div>
   );
-}
-
-function brl(n: number) {
-  return n.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    maximumFractionDigits: 0,
-  });
-}
-
-function num0(n: number) {
-  return Math.round(n).toLocaleString("pt-BR");
 }

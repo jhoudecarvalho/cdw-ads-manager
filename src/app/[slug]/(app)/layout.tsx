@@ -3,12 +3,6 @@ import type { CSSProperties } from "react";
 import { auth } from "@/auth";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TopBar } from "@/components/top-bar";
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
 import { loadActorContext } from "@/server/auth/load-actor";
 import { getTenantBySlug } from "@/server/tenant/resolver";
 
@@ -18,19 +12,14 @@ type Props = {
 };
 
 /**
- * App shell autenticado.
+ * App shell autenticado — porte do design `franchise-ads-dashboard.jsx`.
+ *
+ * Layout flex puro (sidebar fixa + content scrollável). A sidebar tem
+ * estado próprio (open/collapsed) — o trigger é o clique no logo.
  *
  * Guard de sessão:
- *   1. Sem sessão → /{slug}/login
- *   2. Sessão de outro tenant → /{slug}/login (no futuro: tela "trocar de
- *      conta" com signOut)
- *
- * Acima de cada filho monta: sidebar (com logo dinâmico do tenant + nav),
- * top bar (com filtros de plataforma/região/franquia respeitando o papel
- * do usuário), e área de conteúdo.
- *
- * A cor primária do tenant entra como variável CSS `--tenant-primary`,
- * disponível em qualquer descendente para acentos visuais.
+ *   - Sem sessão → /{slug}/login
+ *   - Sessão de outro tenant → /{slug}/login
  */
 export default async function AuthenticatedLayout({ children, params }: Props) {
   const { slug } = await params;
@@ -52,7 +41,7 @@ export default async function AuthenticatedLayout({ children, params }: Props) {
     : undefined;
 
   return (
-    <SidebarProvider style={tenantStyle}>
+    <div className="flex min-h-screen w-full" style={tenantStyle}>
       <AppSidebar
         tenantSlug={tenant.slug}
         tenantName={tenant.name}
@@ -61,14 +50,15 @@ export default async function AuthenticatedLayout({ children, params }: Props) {
         userName={session.user.name ?? null}
         userRole={session.user.role}
       />
-      <SidebarInset>
-        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur">
-          <SidebarTrigger />
-          <Separator orientation="vertical" className="mx-1 h-5" />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header
+          className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-border px-6 py-3 backdrop-blur"
+          style={{ background: "rgba(17, 24, 39, 0.8)" }}
+        >
           <TopBar tenantId={tenant.id} actor={actor} />
         </header>
         <main className="flex-1 overflow-x-hidden">{children}</main>
-      </SidebarInset>
-    </SidebarProvider>
+      </div>
+    </div>
   );
 }

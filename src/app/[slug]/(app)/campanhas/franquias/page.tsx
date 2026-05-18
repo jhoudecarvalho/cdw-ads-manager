@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { DashboardHeader } from "@/components/dashboard-header";
+import { ApiInfoFooter } from "@/components/api-info-footer";
 import { parseDashboardFilters } from "@/lib/filters";
 import { loadActorContext } from "@/server/auth/load-actor";
 import { loadFranchiseRankings } from "@/server/metrics/franchise-rankings";
@@ -18,12 +18,15 @@ export default async function FranquiasPage({ params, searchParams }: Props) {
   const rows = await loadFranchiseRankings(actor.tenantId, actor, filters);
 
   return (
-    <div className="space-y-6 p-6">
-      <DashboardHeader
-        title="Franquias"
-        subtitle={`${slug} · últimos ${filters.rangeDays ?? 14} dias · ranking por ROAS`}
-      />
+    <div className="space-y-5 p-6">
+      <div>
+        <p className="font-mono text-[10px] uppercase tracking-[1.5px] text-text-muted">
+          {slug} · últimos {filters.rangeDays ?? 14} dias · ranking por ROAS
+        </p>
+        <h1 className="mt-1 text-xl font-extrabold">🏪 Franquias</h1>
+      </div>
       <FranchisesGrid rows={rows} />
+      <ApiInfoFooter />
     </div>
   );
 }

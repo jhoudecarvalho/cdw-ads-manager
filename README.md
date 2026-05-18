@@ -305,15 +305,15 @@ As 9 telas de Campanhas Ads são todas "ao vivo" agora — dados via `withTenant
 
 `AuditLog` ativo, escrito por `recordAudit()` (`src/server/audit/record.ts`). Failsafe — falha de log nunca bloqueia a ação principal do usuário. Plugado em:
 
-| Evento | Onde | Metadata |
-|---|---|---|
-| `USER_LOGIN` (ok) | `src/auth.ts` authorize | `{ ok: true }` |
-| `USER_LOGIN` (falha) | `src/auth.ts` authorize | `{ ok: false, reason: "unknown_email" \| "wrong_password" }` |
-| `USER_SIGNUP` | `signupAction` | `{ role }` |
-| `TERMS_ACCEPTED` | `signupAction` | versões aceitas |
-| `AD_ACCOUNT_CONNECTED` (proxy para sync) | `runSyncAction` | `{ trigger, syncedAccounts, totalMetrics }` |
-| `DATA_EXPORTED` | `/api/lgpd/export` | — |
-| `DATA_DELETED` | `anonymizeUser` | `{ reason }` |
+| Evento                                   | Onde                    | Metadata                                                     |
+| ---------------------------------------- | ----------------------- | ------------------------------------------------------------ |
+| `USER_LOGIN` (ok)                        | `src/auth.ts` authorize | `{ ok: true }`                                               |
+| `USER_LOGIN` (falha)                     | `src/auth.ts` authorize | `{ ok: false, reason: "unknown_email" \| "wrong_password" }` |
+| `USER_SIGNUP`                            | `signupAction`          | `{ role }`                                                   |
+| `TERMS_ACCEPTED`                         | `signupAction`          | versões aceitas                                              |
+| `AD_ACCOUNT_CONNECTED` (proxy para sync) | `runSyncAction`         | `{ trigger, syncedAccounts, totalMetrics }`                  |
+| `DATA_EXPORTED`                          | `/api/lgpd/export`      | —                                                            |
+| `DATA_DELETED`                           | `anonymizeUser`         | `{ reason }`                                                 |
 
 Cada linha guarda IP e User-Agent quando dentro de um request context.
 
@@ -327,11 +327,11 @@ Cada linha guarda IP e User-Agent quando dentro de um request context.
 
 Cron `/api/cron/retention` (protegido por `Bearer CRON_SECRET`):
 
-| Tabela | Retenção | Por quê |
-|---|---|---|
-| `sync_logs` | 90 dias | Operacional, só serve para debug recente |
-| `audit_logs` | 5 anos | Padrão para auditoria fiscal/regulatória |
-| `campaign_metrics_daily` | 2 anos | Histórico + tendência anual; mais que isso vira BI separado |
+| Tabela                   | Retenção | Por quê                                                     |
+| ------------------------ | -------- | ----------------------------------------------------------- |
+| `sync_logs`              | 90 dias  | Operacional, só serve para debug recente                    |
+| `audit_logs`             | 5 anos   | Padrão para auditoria fiscal/regulatória                    |
+| `campaign_metrics_daily` | 2 anos   | Histórico + tendência anual; mais que isso vira BI separado |
 
 Iterado por tenant via `withTenantScope` — cada delete só apaga o que está no escopo correto.
 
@@ -346,16 +346,56 @@ Iterado por tenant via `withTenantScope` — cada delete só apaga o que está n
 
 Suíte mínima em `tests/e2e/auth.spec.ts` cobrindo fluxos críticos contra o dev server:
 
-| # | Cenário | Verifica |
-|---|---|---|
-| 1 | Login válido | Cai na Visão Geral com header certo |
-| 2 | Login com senha errada | Mensagem de erro, fica em /login |
-| 3 | Rota autenticada sem sessão | Redireciona para /login |
-| 4 | Sessão de A acessando rota de B | Redireciona para /B/login (isolamento) |
+| #   | Cenário                         | Verifica                               |
+| --- | ------------------------------- | -------------------------------------- |
+| 1   | Login válido                    | Cai na Visão Geral com header certo    |
+| 2   | Login com senha errada          | Mensagem de erro, fica em /login       |
+| 3   | Rota autenticada sem sessão     | Redireciona para /login                |
+| 4   | Sessão de A acessando rota de B | Redireciona para /B/login (isolamento) |
 
 Rode com `npm run test:e2e`. O Playwright sobe o dev server automaticamente (`webServer` reusa se já tiver porta 3000).
 
 **Total**: 51 testes Vitest (unit + RLS isolation) + 4 testes Playwright (e2e).
+
+## Refino visual (Fase 8) — porte do design `franchise-ads-dashboard.jsx`
+
+Toda a camada visual foi reescrita seguindo o protótipo de design. **A arquitetura (loaders, RLS, auth, rotas, testes) permaneceu intacta** — só componentes UI mudaram.
+
+**Tokens** (`src/app/globals.css`):
+
+| Token | Valor (dark) | Uso |
+|---|---|---|
+| `--bg` | `#0a0e17` | page background |
+| `--surface` | `#111827` | cards |
+| `--surface-alt` | `#1a2236` | hover/selects |
+| `--accent` | `#22d3ee` (cyan) | brand, KPIs primários |
+| `--accent-alt` | `#a78bfa` (purple) | KPIs secundários |
+| `--google` | `#4285f4` | Google Ads |
+| `--meta` | `#0668e1` | Meta Ads |
+| `--success` | `#34d399` | conversões, lucro |
+| `--warning` | `#fbbf24` | receita, alertas |
+| `--danger` | `#f87171` | custo, negativo |
+
+**Tipografia**: Space Grotesk (sans, 400–700) + JetBrains Mono (labels uppercase).
+
+**Componentes redesenhados**:
+- `app-sidebar.tsx` — gradient vertical surface→#0d1220, logo gradiente cyan→purple com inicial do tenant, "Painel Integrado" subtitle, Campanhas Ads expansível com border-left cyan no item ativo, 4 BREVEs com badge amarelo
+- `kpi-card.tsx` — gradient surface→surface-alt, emoji watermark 48px no canto top-right (6% opacidade), label mono uppercase, valor 24px extrabold com cor configurável
+- `chart-card.tsx` — wrapper consistente para Recharts (title bold + altura interna)
+- `coming-soon.tsx` — ícone 88px com drop-shadow, badge "🚧 Em desenvolvimento" amarelo
+- `api-info-footer.tsx` — referência dos endpoints Google Ads API v23 + Meta Marketing API v25
+
+**Charts** (Recharts puro com tokens do design):
+- `area-trend-chart.tsx` — multi-series com gradient SVG (`<defs>`) e fill esmaecido
+- `split-pie-chart.tsx` — donut com inner radius, labels externos, formato configurável via preset string (não função — server→client constraint)
+- `region-radar.tsx` — RadarChart de performance por região
+- `conversion-bars.tsx` — barras Google vs Meta lado a lado
+
+**Visão Geral nova** (`/{slug}`): 12 KPIs coloridos, AreaChart 14d Investimento Diário (Google+Meta), Donut Split Investimento, BarChart Conversões Diárias, RadarChart Performance por Região.
+
+**`loadOverview` evoluído**: agora retorna `byDay` separado por plataforma (`googleSpend`/`metaSpend`/`googleConv`/`metaConv`) + agregação `byRegion` para o radar — uma única query alimenta os 4 charts.
+
+**Aprendizado importante** já documentado: **funções não atravessam server→client component**. Aconteceu de novo no `SplitPieChart` (prop `format` era função). Solução adotada: presets string (`"currency" | "int"`) — quem decide é o servidor, quem aplica é o cliente.
 
 ## Status
 
@@ -366,4 +406,5 @@ Rode com `npm run test:e2e`. O Playwright sobe o dev server automaticamente (`we
 - **Fase 5 — Integrações Google + Meta Ads** ✓
 - **Fase 6 — Dashboards** ✓
 - **Fase 7 — LGPD, segurança e testes** ✓
-- Próxima: **Mini-fase de infra** (docker-compose.prod.yml, Dockerfile, env files por ambiente, scripts de bootstrap) — só então **Fase 8 — Refino** dos placeholders BREVE
+- **Fase 8 — Refino visual** ✓ (porte fiel do `franchise-ads-dashboard.jsx`)
+- Próxima: **Mini-fase de infra** (docker-compose.prod.yml, Dockerfile, env files por ambiente, scripts de bootstrap)

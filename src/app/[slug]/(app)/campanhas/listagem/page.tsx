@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { DashboardHeader } from "@/components/dashboard-header";
+import { ApiInfoFooter } from "@/components/api-info-footer";
 import { parseDashboardFilters } from "@/lib/filters";
 import { loadActorContext } from "@/server/auth/load-actor";
 import { loadCampaignsList } from "@/server/metrics/campaigns-list";
@@ -21,12 +21,17 @@ export default async function CampanhasListagemPage({
   const rows = await loadCampaignsList(actor.tenantId, actor, filters);
 
   return (
-    <div className="space-y-6 p-6">
-      <DashboardHeader
-        title="Campanhas"
-        subtitle={`${slug} · últimos ${filters.rangeDays ?? 14} dias`}
-      />
-      <CampaignsTable rows={rows} />
+    <div className="space-y-5 p-6">
+      <div>
+        <p className="font-mono text-[10px] uppercase tracking-[1.5px] text-text-muted">
+          {slug} · últimos {filters.rangeDays ?? 14} dias
+        </p>
+        <h1 className="mt-1 text-xl font-extrabold">📋 Campanhas</h1>
+      </div>
+      <div className="rounded-[14px] border border-border bg-surface p-5">
+        <CampaignsTable rows={rows} />
+      </div>
+      <ApiInfoFooter />
     </div>
   );
 }

@@ -4,8 +4,9 @@ export default function SellfluxPage() {
   return (
     <ComingSoon
       title="Sellflux"
-      description="Integração com Sellflux para sincronização de leads/CRM. Especificação a definir."
-      phase="BREVE"
+      icon="🔄"
+      description="Integração completa com o Sellflux. Visualize o funil de vendas, deals em aberto, atividades e performance comercial de cada franquia."
+      phase="Em desenvolvimento"
     />
   );
 }

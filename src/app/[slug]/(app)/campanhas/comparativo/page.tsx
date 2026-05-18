@@ -1,6 +1,5 @@
 import { auth } from "@/auth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DashboardHeader } from "@/components/dashboard-header";
+import { ApiInfoFooter } from "@/components/api-info-footer";
 import { brl, int, multiplier, pct } from "@/lib/format";
 import { parseDashboardFilters } from "@/lib/filters";
 import { loadActorContext } from "@/server/auth/load-actor";
@@ -20,38 +19,44 @@ export default async function ComparativoPage({ params, searchParams }: Props) {
   const data = await loadComparison(actor.tenantId, actor, filters);
 
   return (
-    <div className="space-y-6 p-6">
-      <DashboardHeader
-        title="Comparativo Google Ads × Meta Ads"
-        subtitle={`${slug} · últimos ${data.rangeDays} dias`}
-      />
+    <div className="space-y-5 p-6">
+      <div>
+        <p className="font-mono text-[10px] uppercase tracking-[1.5px] text-text-muted">
+          {slug} · últimos {data.rangeDays} dias
+        </p>
+        <h1 className="mt-1 text-xl font-extrabold">
+          ⚖️ Comparativo Google × Meta
+        </h1>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <PlatformColumn
-          title="Google Ads"
-          color="border-blue-700/40"
+          title="🔍 Google Ads"
+          accent="var(--google)"
           data={data.google}
           other={data.meta.totals}
         />
         <PlatformColumn
-          title="Meta Ads"
-          color="border-pink-700/40"
+          title="📱 Meta Ads"
+          accent="var(--meta)"
           data={data.meta}
           other={data.google.totals}
         />
       </div>
+
+      <ApiInfoFooter />
     </div>
   );
 }
 
 function PlatformColumn({
   title,
-  color,
+  accent,
   data,
   other,
 }: {
   title: string;
-  color: string;
+  accent: string;
   data: PlatformSlice;
   other: PlatformSlice["totals"];
 }) {
@@ -102,47 +107,51 @@ function PlatformColumn({
   ];
 
   return (
-    <Card className={`border-l-4 ${color}`}>
-      <CardHeader>
-        <CardTitle className="text-base">{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <dl className="space-y-2 text-sm">
-          {rows.map((r) => (
-            <div
-              key={r.label}
-              className="flex items-baseline justify-between border-b border-border/50 pb-2 last:border-0"
-            >
-              <dt className="text-xs uppercase tracking-widest text-muted-foreground">
-                {r.label}
-              </dt>
-              <dd className="text-right">
-                <div className="text-base font-semibold tabular-nums">
-                  {r.mine}
-                </div>
-                <div className="text-[10px] text-muted-foreground tabular-nums">
-                  vs {r.theirs}
-                  {r.delta && (
-                    <span
-                      className={
-                        r.delta.startsWith("+")
-                          ? " text-emerald-400"
-                          : r.delta.startsWith("-")
-                            ? " text-red-400"
-                            : ""
-                      }
-                    >
-                      {" "}
-                      ({r.delta})
-                    </span>
-                  )}
-                </div>
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </CardContent>
-    </Card>
+    <div
+      className="rounded-[14px] border border-border bg-surface p-5"
+      style={{ borderLeftWidth: 4, borderLeftColor: accent }}
+    >
+      <div
+        className="mb-4 text-[14px] font-extrabold"
+        style={{ color: accent }}
+      >
+        {title}
+      </div>
+      <dl className="space-y-2">
+        {rows.map((r) => (
+          <div
+            key={r.label}
+            className="flex items-baseline justify-between border-b border-border/40 pb-2 last:border-0"
+          >
+            <dt className="font-mono text-[10px] uppercase tracking-[1.2px] text-text-muted">
+              {r.label}
+            </dt>
+            <dd className="text-right">
+              <div className="text-base font-extrabold tabular-nums text-text">
+                {r.mine}
+              </div>
+              <div className="text-[10px] tabular-nums text-text-muted">
+                vs {r.theirs}
+                {r.delta && (
+                  <span
+                    style={{
+                      color: r.delta.startsWith("+")
+                        ? "var(--success)"
+                        : r.delta.startsWith("-")
+                          ? "var(--danger)"
+                          : undefined,
+                    }}
+                  >
+                    {" "}
+                    ({r.delta})
+                  </span>
+                )}
+              </div>
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }
 

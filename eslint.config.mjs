@@ -29,6 +29,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "src/generated/**",
     "prisma/migrations/**",
+    // Artefato de design — referência visual, não faz parte do build.
+    "franchise-ads-dashboard.jsx",
   ]),
 ]);
 

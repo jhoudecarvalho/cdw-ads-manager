@@ -4,8 +4,9 @@ export default function EcocentauroPage() {
   return (
     <ComingSoon
       title="Dados Ecocentauro"
-      description="Integração com Ecocentauro. Especificação ainda não definida — quando chegar, este placeholder vira o módulo."
-      phase="BREVE"
+      icon="🦎"
+      description="Integração com os dados do sistema Ecocentauro. Acompanhe métricas operacionais, relatórios e indicadores diretamente no Franchise HUB."
+      phase="Em desenvolvimento"
     />
   );
 }

@@ -2,13 +2,6 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 type Region = { id: string; name: string };
 type Franchise = { id: string; name: string; regionId: string };
@@ -21,6 +14,11 @@ type Props = {
 
 const ALL = "__all__";
 
+/**
+ * Filtros do topo — estilo do design `franchise-ads-dashboard.jsx`:
+ * <select> nativos pequenos com background surface-alt e border consistentes.
+ * Estado vive na URL — `useTransition` evita flash de loading entre mudanças.
+ */
 export function FilterBar({ role, regions, franchises }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -31,10 +29,7 @@ export function FilterBar({ role, regions, franchises }: Props) {
   const regionId = params.get("region") ?? ALL;
   const franchiseId = params.get("franchise") ?? ALL;
 
-  // FRANCHISEE com uma única franquia vinculada → mostra estática, sem select.
   const franchiseLocked = role === "FRANCHISEE" && franchises.length === 1;
-
-  // Franquia escolhida limita a região; região escolhida filtra franquias.
   const visibleFranchises =
     regionId === ALL
       ? franchises
@@ -44,7 +39,6 @@ export function FilterBar({ role, regions, franchises }: Props) {
     const next = new URLSearchParams(params.toString());
     if (value === ALL) next.delete(key);
     else next.set(key, value);
-    // Quando muda a região, limpa franquia se ela sair do escopo.
     if (key === "region") {
       const f = next.get("franchise");
       if (f && f !== ALL) {
@@ -55,76 +49,60 @@ export function FilterBar({ role, regions, franchises }: Props) {
       }
     }
     const qs = next.toString();
-    startTransition(() => {
-      router.push(qs ? `${pathname}?${qs}` : pathname);
-    });
+    startTransition(() => router.push(qs ? `${pathname}?${qs}` : pathname));
   }
+
+  const selectClass =
+    "rounded-md border border-border bg-surface-alt px-2.5 py-1.5 text-[11px] text-text cursor-pointer outline-none transition hover:border-border-light focus:border-accent disabled:opacity-50";
 
   return (
     <div
-      className="flex flex-1 items-center gap-2"
+      className="flex flex-wrap items-center gap-2"
       data-pending={pending || undefined}
     >
-      <Select
+      <select
         value={platform}
-        onValueChange={(v) =>
-          updateParam("platform", typeof v === "string" ? v : ALL)
-        }
+        onChange={(e) => updateParam("platform", e.target.value)}
+        className={selectClass}
       >
-        <SelectTrigger size="sm" className="h-8 w-[140px]">
-          <SelectValue placeholder="Plataforma" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ALL}>Todas plataformas</SelectItem>
-          <SelectItem value="GOOGLE_ADS">Google Ads</SelectItem>
-          <SelectItem value="META_ADS">Meta Ads</SelectItem>
-        </SelectContent>
-      </Select>
+        <option value={ALL}>Todas Plataformas</option>
+        <option value="GOOGLE_ADS">Google Ads</option>
+        <option value="META_ADS">Meta Ads</option>
+      </select>
 
       {role !== "FRANCHISEE" && regions.length > 0 && (
-        <Select
+        <select
           value={regionId}
-          onValueChange={(v) =>
-            updateParam("region", typeof v === "string" ? v : ALL)
-          }
+          onChange={(e) => updateParam("region", e.target.value)}
+          className={selectClass}
         >
-          <SelectTrigger size="sm" className="h-8 w-[160px]">
-            <SelectValue placeholder="Região" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Todas regiões</SelectItem>
-            {regions.map((r) => (
-              <SelectItem key={r.id} value={r.id}>
-                {r.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          <option value={ALL}>Todas Regiões</option>
+          {regions.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
       )}
 
       {franchiseLocked ? (
-        <div className="rounded border border-border px-2 py-1 text-xs text-muted-foreground">
+        <div className="rounded-md border border-border bg-surface-alt px-2.5 py-1.5 text-[11px] text-text-muted">
           {franchises[0]!.name}
         </div>
       ) : (
-        <Select
+        <select
           value={franchiseId}
-          onValueChange={(v) =>
-            updateParam("franchise", typeof v === "string" ? v : ALL)
-          }
+          onChange={(e) => updateParam("franchise", e.target.value)}
+          className={selectClass}
+          style={{ maxWidth: 240 }}
         >
-          <SelectTrigger size="sm" className="h-8 w-[220px]">
-            <SelectValue placeholder="Franquia" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Todas franquias</SelectItem>
-            {visibleFranchises.map((f) => (
-              <SelectItem key={f.id} value={f.id}>
-                {f.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          <option value={ALL}>Todas Franquias</option>
+          {visibleFranchises.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.name}
+            </option>
+          ))}
+        </select>
       )}
     </div>
   );

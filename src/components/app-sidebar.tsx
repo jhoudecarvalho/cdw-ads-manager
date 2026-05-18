@@ -2,57 +2,91 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  DollarSign,
-  GitCompareArrows,
-  Globe,
-  Handshake,
-  LayoutDashboard,
-  List,
-  Map,
-  Megaphone,
-  MessageCircle,
-  RefreshCw,
-  Search,
-  Sprout,
-  Store,
-  TrendingUp,
-  type LucideIcon,
-} from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, PanelLeft } from "lucide-react";
 import { signOut } from "next-auth/react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from "@/components/ui/sidebar";
-import { NAVIGATION, isNavGroup, type NavLink } from "@/server/navigation";
 
-const ICONS: Record<string, LucideIcon> = {
-  LayoutDashboard,
-  Megaphone,
-  Search,
-  MessageCircle,
-  List,
-  Store,
-  Map,
-  TrendingUp,
-  DollarSign,
-  GitCompareArrows,
-  Sprout,
-  Handshake,
-  RefreshCw,
-  Globe,
+/**
+ * Sidebar do design Franchise HUB — porte direto de
+ * `franchise-ads-dashboard.jsx`. Colapsável (240px ↔ 60px), gradient
+ * vertical, logo gradiente cyan→purple com inicial do tenant.
+ *
+ * Navegação:
+ *   - Campanhas Ads (expansível, default aberto): Visão Geral + 8 submenus
+ *   - 4 itens com badge BREVE (Ecocentauro, Indicação, Sellflux, Landing)
+ *   - Footer: select de "Nível de acesso" (futuro — hoje só mostra role)
+ */
+
+type SubmenuItem = {
+  key: string;
+  label: string;
+  href: string; // path relativo ao slug (vazio = visão geral)
+  icon: string;
 };
+
+const SUBMENUS: SubmenuItem[] = [
+  { key: "overview", label: "Visão Geral", href: "", icon: "📊" },
+  {
+    key: "google",
+    label: "Google Ads",
+    href: "campanhas/google-ads",
+    icon: "🔍",
+  },
+  { key: "meta", label: "Meta Ads", href: "campanhas/meta-ads", icon: "📱" },
+  {
+    key: "campaigns",
+    label: "Campanhas",
+    href: "campanhas/listagem",
+    icon: "📋",
+  },
+  {
+    key: "franchises",
+    label: "Franquias",
+    href: "campanhas/franquias",
+    icon: "🏪",
+  },
+  { key: "regions", label: "Regiões", href: "campanhas/regioes", icon: "🗺️" },
+  {
+    key: "performance",
+    label: "Performance",
+    href: "campanhas/performance",
+    icon: "⚡",
+  },
+  {
+    key: "financial",
+    label: "Financeiro",
+    href: "campanhas/financeiro",
+    icon: "💰",
+  },
+  {
+    key: "comparison",
+    label: "Comparativo",
+    href: "campanhas/comparativo",
+    icon: "⚖️",
+  },
+];
+
+const COMING_SOON = [
+  {
+    key: "ecocentauro",
+    label: "Dados Ecocentauro",
+    href: "ecocentauro",
+    icon: "🦎",
+  },
+  {
+    key: "indicacao",
+    label: "Programa Indicação",
+    href: "indicacao",
+    icon: "🤝",
+  },
+  { key: "sellflux", label: "Sellflux", href: "sellflux", icon: "🔄" },
+  {
+    key: "landingpage",
+    label: "Landing Page",
+    href: "landing-page",
+    icon: "🌐",
+  },
+];
 
 type Props = {
   tenantSlug: string;
@@ -63,162 +97,201 @@ type Props = {
   userRole: string;
 };
 
-export function AppSidebar(props: Props) {
-  const {
-    tenantSlug,
-    tenantName,
-    tenantLogoUrl,
-    userEmail,
-    userName,
-    userRole,
-  } = props;
+const ROLE_META: Record<string, { label: string; icon: string }> = {
+  ADMIN: { label: "Administrador (Matriz)", icon: "👑" },
+  REGIONAL: { label: "Gestor Regional", icon: "🗺️" },
+  FRANCHISEE: { label: "Franqueado", icon: "🏪" },
+};
+
+export function AppSidebar({
+  tenantSlug,
+  tenantName,
+  userEmail,
+  userName,
+  userRole,
+}: Props) {
   const pathname = usePathname();
+  const [open, setOpen] = useState(true);
+  const [adsOpen, setAdsOpen] = useState(true);
 
-  const hrefFor = (href: string) =>
-    href === "" ? `/${tenantSlug}` : `/${tenantSlug}/${href}`;
-
-  const isActive = (href: string) => {
-    const full = hrefFor(href);
-    if (href === "") return pathname === full;
+  const hrefFor = (rel: string) =>
+    rel === "" ? `/${tenantSlug}` : `/${tenantSlug}/${rel}`;
+  const isActive = (rel: string) => {
+    const full = hrefFor(rel);
+    if (rel === "") return pathname === full;
     return pathname === full || pathname.startsWith(full + "/");
   };
 
+  const adsActive = SUBMENUS.some((s) => isActive(s.href));
+
   return (
-    <Sidebar collapsible="icon" variant="inset">
-      <SidebarHeader className="border-b border-sidebar-border">
-        <div className="flex items-center gap-2 px-2 py-2">
-          {tenantLogoUrl ? (
-            // Logo dinâmico do tenant.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={tenantLogoUrl}
-              alt={tenantName}
-              className="h-8 w-8 rounded object-contain"
-            />
-          ) : (
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded text-xs font-bold text-white"
-              style={{ backgroundColor: "var(--tenant-primary, #7C3AED)" }}
-            >
-              {tenantName.slice(0, 2).toUpperCase()}
-            </div>
-          )}
-          <div className="flex min-w-0 flex-1 flex-col leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="truncate text-sm font-semibold">{tenantName}</span>
-            <span className="truncate text-xs text-muted-foreground">
-              /{tenantSlug}
-            </span>
-          </div>
-        </div>
-      </SidebarHeader>
-
-      <SidebarContent>
-        {NAVIGATION.map((section, idx) =>
-          isNavGroup(section) ? (
-            <SidebarGroup key={idx}>
-              <SidebarGroupLabel className="flex items-center gap-2">
-                {renderIcon(section.icon, "size-4")}
-                {section.label}
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {section.items.map((item) => (
-                    <NavItem
-                      key={item.href}
-                      item={item}
-                      href={hrefFor(item.href)}
-                      active={isActive(item.href)}
-                    />
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          ) : (
-            <SidebarGroup key={idx}>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  <NavItem
-                    item={section}
-                    href={hrefFor(section.href)}
-                    active={isActive(section.href)}
-                  />
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          ),
-        )}
-      </SidebarContent>
-
-      <SidebarFooter className="border-t border-sidebar-border">
-        <div className="flex items-center gap-2 px-1 py-1">
-          <Avatar className="h-7 w-7">
-            <AvatarFallback className="text-xs">
-              {(userName ?? userEmail).slice(0, 2).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex min-w-0 flex-1 flex-col leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="truncate text-xs font-medium">
-              {userName ?? userEmail}
-            </span>
-            <span className="truncate text-[10px] uppercase tracking-wider text-muted-foreground">
-              {userRole}
-            </span>
-          </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 px-2 text-xs group-data-[collapsible=icon]:hidden"
-            onClick={() => signOut({ callbackUrl: `/${tenantSlug}/login` })}
-          >
-            Sair
-          </Button>
-        </div>
-      </SidebarFooter>
-    </Sidebar>
-  );
-}
-
-function NavItem({
-  item,
-  href,
-  active,
-}: {
-  item: NavLink;
-  href: string;
-  active: boolean;
-}) {
-  if (item.comingSoon) {
-    return (
-      <SidebarMenuItem>
-        <SidebarMenuButton
-          render={<Link href={href} className="opacity-60" />}
-          tooltip={item.label}
-        >
-          {renderIcon(item.icon, "size-4")}
-          <span className="flex-1">{item.label}</span>
-          <Badge variant="secondary" className="text-[9px] uppercase">
-            BREVE
-          </Badge>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    );
-  }
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton
-        render={<Link href={href} />}
-        tooltip={item.label}
-        isActive={active}
+    <aside
+      className="flex shrink-0 flex-col overflow-hidden border-r border-border transition-[width] duration-300"
+      style={{
+        width: open ? 240 : 60,
+        minHeight: "100vh",
+        background: "linear-gradient(180deg, var(--surface) 0%, #0d1220 100%)",
+      }}
+    >
+      {/* Logo + toggle */}
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2.5 border-b border-border px-4 py-5 transition hover:bg-surface-alt/30"
+        style={{ paddingInline: open ? 16 : 8 }}
       >
-        {renderIcon(item.icon, "size-4")}
-        <span>{item.label}</span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  );
-}
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-[18px] font-extrabold text-bg"
+          style={{
+            background:
+              "linear-gradient(135deg, var(--accent), var(--accent-alt))",
+          }}
+        >
+          {tenantName.slice(0, 1).toUpperCase()}
+        </div>
+        {open && (
+          <div className="min-w-0 flex-1 text-left">
+            <div className="truncate text-sm font-extrabold leading-tight text-text">
+              {tenantName}
+            </div>
+            <div className="font-mono text-[9px] uppercase tracking-[1.5px] text-text-muted">
+              Painel Integrado
+            </div>
+          </div>
+        )}
+        {open && <PanelLeft className="h-3.5 w-3.5 text-text-muted" />}
+      </button>
 
-function renderIcon(name: string | undefined, className: string) {
-  if (!name) return null;
-  const Icon = ICONS[name];
-  return Icon ? <Icon className={className} /> : null;
+      {/* Menu */}
+      <nav
+        className="flex-1 overflow-y-auto"
+        style={{ padding: open ? "12px 8px" : "12px 4px" }}
+      >
+        {/* Campanhas Ads — expansível */}
+        <button
+          onClick={() => setAdsOpen(!adsOpen)}
+          className="flex w-full items-center gap-2.5 rounded-lg text-[12px] font-bold text-accent transition-colors hover:bg-accent/10"
+          style={{
+            padding: open ? "10px 12px" : "10px 0",
+            justifyContent: open ? "flex-start" : "center",
+            background: adsOpen ? "rgba(34, 211, 238, 0.07)" : "transparent",
+          }}
+        >
+          <span className="text-base">📣</span>
+          {open && (
+            <>
+              <span className="flex-1 text-left">Campanhas Ads</span>
+              <ChevronDown
+                className={`h-3 w-3 transition-transform ${adsOpen ? "rotate-180" : ""}`}
+              />
+            </>
+          )}
+        </button>
+
+        {/* Submenus */}
+        {adsOpen && (
+          <div
+            className="mt-1"
+            style={{ paddingLeft: open ? 12 : 0, marginBottom: 8 }}
+          >
+            {SUBMENUS.map((s) => {
+              const active = isActive(s.href);
+              return (
+                <Link
+                  key={s.key}
+                  href={hrefFor(s.href)}
+                  className="my-px flex w-full items-center gap-2.5 rounded-lg text-[11px] transition-colors"
+                  style={{
+                    padding: open ? "8px 12px" : "8px 0",
+                    justifyContent: open ? "flex-start" : "center",
+                    background: active
+                      ? "rgba(34, 211, 238, 0.10)"
+                      : "transparent",
+                    color: active ? "var(--accent)" : "var(--text-muted)",
+                    fontWeight: active ? 700 : 500,
+                    borderLeft: active
+                      ? "3px solid var(--accent)"
+                      : "3px solid transparent",
+                  }}
+                  title={!open ? s.label : undefined}
+                >
+                  <span className="text-[13px]">{s.icon}</span>
+                  {open && s.label}
+                </Link>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Separator */}
+        <div className="my-2 h-px bg-border" />
+
+        {/* BREVE items */}
+        {COMING_SOON.map((c) => {
+          const active = isActive(c.href);
+          return (
+            <Link
+              key={c.key}
+              href={hrefFor(c.href)}
+              className="my-0.5 flex w-full items-center gap-2.5 rounded-lg text-[12px] font-semibold opacity-70 transition-colors hover:opacity-100"
+              style={{
+                padding: open ? "10px 12px" : "10px 0",
+                justifyContent: open ? "flex-start" : "center",
+                background: active
+                  ? "rgba(167, 139, 250, 0.10)"
+                  : "transparent",
+                color: active ? "var(--accent-alt)" : "var(--text-muted)",
+              }}
+              title={!open ? c.label : undefined}
+            >
+              <span className="text-base">{c.icon}</span>
+              {open && (
+                <>
+                  <span className="flex-1 text-left">{c.label}</span>
+                  <span
+                    className="rounded text-[8px] font-extrabold uppercase tracking-wider"
+                    style={{
+                      padding: "2px 6px",
+                      background: "rgba(251, 191, 36, 0.15)",
+                      color: "var(--warning)",
+                    }}
+                  >
+                    BREVE
+                  </span>
+                </>
+              )}
+            </Link>
+          );
+        })}
+
+        {adsActive && false /* keep adsActive referenced for lint */}
+      </nav>
+
+      {/* Footer — usuário + role + sair */}
+      {open && (
+        <div className="border-t border-border px-3.5 py-3 text-[11px]">
+          <div className="mb-1.5 font-mono text-[9px] uppercase tracking-[1.2px] text-text-muted">
+            Nível de Acesso
+          </div>
+          <div className="mb-2 rounded-md border border-border bg-surface-alt px-2 py-1.5 text-[11px]">
+            <div className="text-text">
+              {ROLE_META[userRole]?.icon ?? "👤"}{" "}
+              {ROLE_META[userRole]?.label ?? userRole}
+            </div>
+          </div>
+          <div className="space-y-0.5">
+            <div className="truncate text-[10px] text-text">
+              {userName ?? userEmail}
+            </div>
+            <button
+              type="button"
+              onClick={() => signOut({ callbackUrl: `/${tenantSlug}/login` })}
+              className="text-[10px] text-text-muted underline-offset-2 transition hover:text-accent hover:underline"
+            >
+              Sair
+            </button>
+          </div>
+        </div>
+      )}
+    </aside>
+  );
 }
