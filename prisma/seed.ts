@@ -399,17 +399,24 @@ async function seedTenant(prisma: PrismaClient, t: SeedTenant) {
       if (legacyFranchises > 0) {
         // SALVAGUARDA: em produção nunca apagar dados sem confirmação
         // explícita. Se o tenant existe como FRANCHISE em prod e o seed
-        // tentaria transformar em COMPANY, abortar com mensagem clara —
-        // o operador deve decidir manualmente (UPDATE direto + cleanup).
+        // tentaria transformar em COMPANY, PULAR o restante deste tenant
+        // (cria empresas mock e ads/campanhas só em ambientes não-prod).
+        //
+        // Estado resultante em prod: `tenantType=COMPANY` já está salvo
+        // (upsert antes deste bloco), franquias velhas permanecem no banco
+        // mas inacessíveis pela UI nova (rotas /franquias e /regioes dão
+        // 404 para tenants COMPANY). O operador resolve manualmente quando
+        // for o caso (DELETE explícito ou reverter tenantType).
         if (
           process.env.NODE_ENV === "production" &&
           process.env.SEED_FORCE_DESTRUCTIVE !== "1"
         ) {
-          throw new Error(
-            `[seed] tenant ${tenant.slug} tem ${legacyFranchises} franquias e está sendo marcado como COMPANY. ` +
-              `Em produção isso APAGARIA franchises/regions/adAccounts/campaigns. ` +
-              `Resolva manualmente ou exporte SEED_FORCE_DESTRUCTIVE=1 se for proposital.`,
+          console.warn(
+            `  ⚠ tenant ${tenant.slug} virou COMPANY mas tem ${legacyFranchises} franquias legadas em prod — ` +
+              `PULANDO criação de empresas mock para preservar dados existentes. ` +
+              `Resolva manualmente ou re-rode com SEED_FORCE_DESTRUCTIVE=1 se for proposital.`,
           );
+          return; // encerra o callback de withScope; loop do main segue ao próximo tenant.
         }
         // Ordem importa por causa das FKs SET NULL/CASCADE — apagamos os
         // sync_logs primeiro (FK SET NULL em adAccount), depois adAccounts
