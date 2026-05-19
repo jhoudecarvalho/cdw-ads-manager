@@ -106,6 +106,7 @@ const ROLE_META: Record<string, { label: string; icon: string }> = {
 export function AppSidebar({
   tenantSlug,
   tenantName,
+  tenantLogoUrl,
   userEmail,
   userName,
   userRole,
@@ -140,13 +141,26 @@ export function AppSidebar({
         style={{ paddingInline: open ? 16 : 8 }}
       >
         <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-[18px] font-extrabold text-bg"
-          style={{
-            background:
-              "linear-gradient(135deg, var(--accent), var(--accent-alt))",
-          }}
+          className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[10px] text-[18px] font-extrabold text-bg"
+          style={
+            tenantLogoUrl
+              ? { background: "var(--surface-alt, #0d1220)" }
+              : {
+                  background:
+                    "linear-gradient(135deg, var(--accent), var(--accent-alt))",
+                }
+          }
         >
-          {tenantName.slice(0, 1).toUpperCase()}
+          {tenantLogoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={tenantLogoUrl}
+              alt={tenantName}
+              className="h-full w-full object-contain"
+            />
+          ) : (
+            tenantName.slice(0, 1).toUpperCase()
+          )}
         </div>
         {open && (
           <div className="min-w-0 flex-1 text-left">
@@ -264,6 +278,31 @@ export function AppSidebar({
         })}
 
         {adsActive && false /* keep adsActive referenced for lint */}
+
+        {/* Settings — só ADMIN */}
+        {userRole === "ADMIN" && (
+          <>
+            <div className="my-2 h-px bg-border" />
+            <Link
+              href={hrefFor("settings")}
+              className="my-0.5 flex w-full items-center gap-2.5 rounded-lg text-[12px] font-semibold transition-colors"
+              style={{
+                padding: open ? "10px 12px" : "10px 0",
+                justifyContent: open ? "flex-start" : "center",
+                background: isActive("settings")
+                  ? "rgba(167, 139, 250, 0.10)"
+                  : "transparent",
+                color: isActive("settings")
+                  ? "var(--accent-alt)"
+                  : "var(--text-muted)",
+              }}
+              title={!open ? "Configurações" : undefined}
+            >
+              <span className="text-base">⚙️</span>
+              {open && <span className="flex-1 text-left">Configurações</span>}
+            </Link>
+          </>
+        )}
       </nav>
 
       {/* Footer — usuário + role + sair */}

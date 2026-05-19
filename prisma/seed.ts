@@ -76,6 +76,7 @@ const TENANTS = [
     slug: "anjos",
     name: "Anjos Programa",
     primaryColor: "#7C3AED",
+    logoUrl: null,
     admin: {
       email: "admin@anjos.test",
       name: "Admin Anjos",
@@ -86,10 +87,23 @@ const TENANTS = [
     slug: "kgepel",
     name: "K-Gépel",
     primaryColor: "#0EA5E9",
+    logoUrl: null,
     admin: {
       email: "admin@kgepel.test",
       name: "Admin K-Gépel",
       password: "dev-kgepel-123",
+    },
+  },
+  {
+    slug: "clickvel",
+    name: "Clickvel",
+    primaryColor: "#7C3AED",
+    logoUrl:
+      "https://clickvel.com.br/wp-content/uploads/2025/11/logonova.png.webp",
+    admin: {
+      email: "admin@clickvel.test",
+      name: "Admin Clickvel",
+      password: "dev-clickvel-123",
     },
   },
 ] as const;
@@ -135,8 +149,17 @@ async function seedTenant(prisma: PrismaClient, t: (typeof TENANTS)[number]) {
   // Tenant é "global" — sem RLS.
   const tenant = await prisma.tenant.upsert({
     where: { slug: t.slug },
-    update: { name: t.name, primaryColor: t.primaryColor },
-    create: { slug: t.slug, name: t.name, primaryColor: t.primaryColor },
+    update: {
+      name: t.name,
+      primaryColor: t.primaryColor,
+      logoUrl: t.logoUrl,
+    },
+    create: {
+      slug: t.slug,
+      name: t.name,
+      primaryColor: t.primaryColor,
+      logoUrl: t.logoUrl,
+    },
     select: { id: true, slug: true },
   });
   console.log(`✓ tenant ${tenant.slug} (${tenant.id})`);
@@ -200,7 +223,12 @@ async function seedTenant(prisma: PrismaClient, t: (typeof TENANTS)[number]) {
     console.log(`  + ${regions.length} regiões`);
 
     // --- Franquias ---
-    const rand = rng(tenant.slug === "anjos" ? 1337 : 4242);
+    // Seed determinístico por slug — mantém o volume estável entre runs.
+    const slugSeed = Array.from(tenant.slug).reduce(
+      (acc, c) => (acc * 31 + c.charCodeAt(0)) >>> 0,
+      0,
+    );
+    const rand = rng(slugSeed);
     let franchisesCreated = 0;
     for (let i = 1; i <= FRANCHISES_PER_TENANT; i++) {
       const region = REGIONS[(i - 1) % REGIONS.length]!;
