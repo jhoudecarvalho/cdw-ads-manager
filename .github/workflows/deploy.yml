@@ -93,7 +93,12 @@ jobs:
             echo "::endgroup::"
 
             echo "::group::docker compose up -d"
-            docker compose -f compose.prod.yaml up -d
+            # --force-recreate app: o build acima atualiza franchise-hub:latest
+            # in-place. Sem force-recreate, o compose às vezes não detecta a
+            # troca (tag idêntica) e mantém o container antigo — o site fica
+            # "healthy" mas servindo código velho. O branch de rollback já usa
+            # --force-recreate pelo mesmo motivo.
+            docker compose -f compose.prod.yaml up -d --force-recreate app
             echo "::endgroup::"
 
             echo "::group::aguardando /api/health"
