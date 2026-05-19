@@ -1,4 +1,5 @@
 import { cache } from "react";
+import type { TenantType } from "@/generated/prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { isValidTenantSlug } from "./slug";
 
@@ -9,6 +10,7 @@ export type TenantSummary = {
   slug: string;
   name: string;
   status: "ACTIVE" | "SUSPENDED" | "CANCELED";
+  tenantType: TenantType;
   logoUrl: string | null;
   primaryColor: string | null;
 };
@@ -32,6 +34,7 @@ export const getTenantBySlug = cache(
         slug: true,
         name: true,
         status: true,
+        tenantType: true,
         logoUrl: true,
         primaryColor: true,
       },

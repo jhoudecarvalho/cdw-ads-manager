@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { ApiInfoFooter } from "@/components/api-info-footer";
 import { parseDashboardFilters } from "@/lib/filters";
@@ -14,6 +15,9 @@ export default async function FranquiasPage({ params, searchParams }: Props) {
   const [{ slug }, sp] = await Promise.all([params, searchParams]);
   const session = await auth();
   const actor = await loadActorContext(session!);
+  // Página exclusiva do modo FRANCHISE — em COMPANY o caminho correto é
+  // `campanhas/empresas`.
+  if (actor.tenantType !== "FRANCHISE") notFound();
   const filters = parseDashboardFilters(sp);
   const rows = await loadFranchiseRankings(actor.tenantId, actor, filters);
 

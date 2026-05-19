@@ -1,6 +1,7 @@
 import { withTenantScope } from "@/server/db/tenant-scope";
 import type { Platform } from "@/generated/prisma/client";
 import type { ActorContext } from "@/server/auth/can";
+import { getTenantModule } from "@/server/tenant/tenant-modules";
 import {
   buildFranchiseWhere,
   buildMetricWhere,
@@ -45,13 +46,18 @@ export type OverviewSnapshot = {
     spend: number;
     revenue: number;
   }>;
-  /** Para o RadarChart de Performance por Região. */
-  byRegion: Array<{
-    region: string;
+  /**
+   * Agrupamento operacional: por Region (modo FRANCHISE) ou por
+   * `Company.sector` (modo COMPANY). `groupLabel` carrega o rótulo
+   * apropriado para a UI sem precisar ler o `tenantType` lá.
+   */
+  byGroup: Array<{
+    name: string;
     conversions: number;
     spend: number;
     revenue: number;
   }>;
+  groupLabel: "Região" | "Setor";
   rangeDays: number;
 };
 
@@ -63,9 +69,10 @@ export async function loadOverview(
   const rangeDays = filters.rangeDays ?? 14;
   const where = buildMetricWhere(actor, filters);
   const since = dateSince(rangeDays);
+  const mod = getTenantModule(actor.tenantType);
 
   return withTenantScope(tenantId, async (tx) => {
-    const [totals, byDayTotal, campaignsForSplit, regions] = await Promise.all([
+    const [totals, byDayTotal, campaignsForSplit, groupRows] = await Promise.all([
       tx.campaignMetricDaily.aggregate({
         where,
         _sum: {
@@ -101,19 +108,48 @@ export async function loadOverview(
           },
         },
       }),
-      // Para o RadarChart — agrega por região via Franchise.region.name.
-      tx.region.findMany({
-        where: {
-          deletedAt: null,
-          ...(actor.role === "REGIONAL"
-            ? { id: { in: actor.regionIds ?? ["__none__"] } }
-            : {}),
-        },
-        select: {
-          name: true,
-          franchises: {
-            where: buildFranchiseWhere(actor, filters),
+      // Para o RadarChart — agrupa por Region (modo FRANCHISE) ou por
+      // Company.sector (modo COMPANY). Em FRANCHISE itera regions, em
+      // COMPANY itera companies e agrupa por sector na pós-processagem.
+      mod.groupBy === "region"
+        ? tx.region.findMany({
+            where: {
+              deletedAt: null,
+              ...(actor.role === "REGIONAL"
+                ? { id: { in: actor.regionIds ?? ["__none__"] } }
+                : {}),
+            },
             select: {
+              name: true,
+              franchises: {
+                where: buildFranchiseWhere(actor, filters),
+                select: {
+                  campaigns: {
+                    where: {
+                      deletedAt: null,
+                      ...(filters.platform
+                        ? { platform: filters.platform }
+                        : {}),
+                    },
+                    select: {
+                      metrics: {
+                        where: { date: { gte: since } },
+                        select: {
+                          spend: true,
+                          conversions: true,
+                          conversionValue: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          })
+        : tx.company.findMany({
+            where: { deletedAt: null },
+            select: {
+              sector: true,
               campaigns: {
                 where: {
                   deletedAt: null,
@@ -131,9 +167,7 @@ export async function loadOverview(
                 },
               },
             },
-          },
-        },
-      }),
+          }),
     ]);
 
     const sumSpend = num(totals._sum.spend);
@@ -222,8 +256,23 @@ export async function loadOverview(
       a.date.localeCompare(b.date),
     );
 
-    const byRegion = regions
-      .map((r) => {
+    type GroupAgg = { conversions: number; spend: number; revenue: number };
+    const groupMap = new Map<string, GroupAgg>();
+    if (mod.groupBy === "region") {
+      // groupRows é Region[] com franchises aninhadas.
+      const regions = groupRows as Array<{
+        name: string;
+        franchises: Array<{
+          campaigns: Array<{
+            metrics: Array<{
+              spend: unknown;
+              conversions: unknown;
+              conversionValue: unknown;
+            }>;
+          }>;
+        }>;
+      }>;
+      for (const r of regions) {
         let conversions = 0;
         let spend = 0;
         let revenue = 0;
@@ -236,8 +285,39 @@ export async function loadOverview(
             }
           }
         }
-        return { region: r.name, conversions, spend, revenue };
-      })
+        groupMap.set(r.name, { conversions, spend, revenue });
+      }
+    } else {
+      // groupRows é Company[] — agrega por sector.
+      const companies = groupRows as Array<{
+        sector: string | null;
+        campaigns: Array<{
+          metrics: Array<{
+            spend: unknown;
+            conversions: unknown;
+            conversionValue: unknown;
+          }>;
+        }>;
+      }>;
+      for (const co of companies) {
+        const key = co.sector?.trim() || "Sem setor";
+        const acc = groupMap.get(key) ?? {
+          conversions: 0,
+          spend: 0,
+          revenue: 0,
+        };
+        for (const c of co.campaigns) {
+          for (const m of c.metrics) {
+            acc.conversions += num(m.conversions);
+            acc.spend += num(m.spend);
+            acc.revenue += num(m.conversionValue);
+          }
+        }
+        groupMap.set(key, acc);
+      }
+    }
+    const byGroup = Array.from(groupMap.entries())
+      .map(([name, v]) => ({ name, ...v }))
       .sort((a, b) => b.conversions - a.conversions);
 
     return {
@@ -265,7 +345,8 @@ export async function loadOverview(
         platform,
         ...v,
       })),
-      byRegion,
+      byGroup,
+      groupLabel: mod.groupBy === "region" ? "Região" : "Setor",
       rangeDays,
     };
   });

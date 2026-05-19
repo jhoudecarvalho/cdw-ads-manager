@@ -13,12 +13,26 @@ import type { ActorContext } from "./can";
  */
 export const loadActorContext = cache(
   async (session: Session): Promise<ActorContext> => {
-    const { id, tenantId, role } = session.user;
+    // Defesa contra session null/incompleta — algumas falhas de Auth.js
+    // (ex.: JWTSessionError) podem propagar como `session=null` quando o
+    // chamador usou `!` confiando que existia.
+    if (!session?.user?.tenantId) {
+      throw new Error(
+        "loadActorContext chamado sem sessão válida — verifique o guard antes.",
+      );
+    }
+    const { id, tenantId, role, tenantType } = session.user;
+
+    // SUPER_ADMIN não tem vínculos com franquias/regiões — `can()` libera
+    // tudo independente do tenant. Sem query desnecessária.
+    if (role === "SUPER_ADMIN") {
+      return { id, tenantId, role, tenantType };
+    }
 
     // ADMIN não tem filtros por franquia/região — `can()` libera tudo
     // dentro do tenant. Evitamos as queries.
     if (role === "ADMIN") {
-      return { id, tenantId, role };
+      return { id, tenantId, role, tenantType };
     }
 
     const { franchiseIds, regionIds } = await withTenantScope(
@@ -41,6 +55,6 @@ export const loadActorContext = cache(
       },
     );
 
-    return { id, tenantId, role, franchiseIds, regionIds };
+    return { id, tenantId, role, tenantType, franchiseIds, regionIds };
   },
 );

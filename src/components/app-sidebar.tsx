@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { ChevronDown, PanelLeft } from "lucide-react";
 import { signOut } from "next-auth/react";
+import type { TenantType } from "@/generated/prisma/client";
+import { getTenantModule } from "@/server/tenant/tenant-modules";
 
 /**
  * Sidebar do design Franchise HUB — porte direto de
@@ -12,7 +14,11 @@ import { signOut } from "next-auth/react";
  * vertical, logo gradiente cyan→purple com inicial do tenant.
  *
  * Navegação:
- *   - Campanhas Ads (expansível, default aberto): Visão Geral + 8 submenus
+ *   - Campanhas Ads (expansível, default aberto): Visão Geral + submenus
+ *     condicionais ao `tenantType`:
+ *       FRANCHISE: ..., Franquias, Regiões, Performance, Financeiro, Comparativo
+ *       COMPANY:   ..., Empresas,           Performance, Financeiro, Comparativo,
+ *                  + Cadastrar Empresa
  *   - 4 itens com badge BREVE (Ecocentauro, Indicação, Sellflux, Landing)
  *   - Footer: select de "Nível de acesso" (futuro — hoje só mostra role)
  */
@@ -24,47 +30,82 @@ type SubmenuItem = {
   icon: string;
 };
 
-const SUBMENUS: SubmenuItem[] = [
-  { key: "overview", label: "Visão Geral", href: "", icon: "📊" },
-  {
-    key: "google",
-    label: "Google Ads",
-    href: "campanhas/google-ads",
-    icon: "🔍",
-  },
-  { key: "meta", label: "Meta Ads", href: "campanhas/meta-ads", icon: "📱" },
-  {
-    key: "campaigns",
-    label: "Campanhas",
-    href: "campanhas/listagem",
-    icon: "📋",
-  },
-  {
-    key: "franchises",
-    label: "Franquias",
-    href: "campanhas/franquias",
-    icon: "🏪",
-  },
-  { key: "regions", label: "Regiões", href: "campanhas/regioes", icon: "🗺️" },
-  {
-    key: "performance",
-    label: "Performance",
-    href: "campanhas/performance",
-    icon: "⚡",
-  },
-  {
-    key: "financial",
-    label: "Financeiro",
-    href: "campanhas/financeiro",
-    icon: "💰",
-  },
-  {
-    key: "comparison",
-    label: "Comparativo",
-    href: "campanhas/comparativo",
-    icon: "⚖️",
-  },
-];
+function buildSubmenus(tenantType: TenantType): SubmenuItem[] {
+  const mod = getTenantModule(tenantType);
+  const items: SubmenuItem[] = [
+    { key: "overview", label: "Visão Geral", href: "", icon: "📊" },
+    {
+      key: "google",
+      label: "Google Ads",
+      href: "campanhas/google-ads",
+      icon: "🔍",
+    },
+    { key: "meta", label: "Meta Ads", href: "campanhas/meta-ads", icon: "📱" },
+    {
+      key: "campaigns",
+      label: "Campanhas",
+      href: "campanhas/listagem",
+      icon: "📋",
+    },
+  ];
+
+  if (tenantType === "FRANCHISE") {
+    items.push({
+      key: "franchises",
+      label: mod.unitLabelPlural,
+      href: "campanhas/franquias",
+      icon: "🏪",
+    });
+  } else {
+    items.push({
+      key: "companies",
+      label: mod.unitLabelPlural,
+      href: "campanhas/empresas",
+      icon: "🏢",
+    });
+  }
+
+  if (mod.hasRegions) {
+    items.push({
+      key: "regions",
+      label: "Regiões",
+      href: "campanhas/regioes",
+      icon: "🗺️",
+    });
+  }
+
+  items.push(
+    {
+      key: "performance",
+      label: "Performance",
+      href: "campanhas/performance",
+      icon: "⚡",
+    },
+    {
+      key: "financial",
+      label: "Financeiro",
+      href: "campanhas/financeiro",
+      icon: "💰",
+    },
+    {
+      key: "comparison",
+      label: "Comparativo",
+      href: "campanhas/comparativo",
+      icon: "⚖️",
+    },
+  );
+
+  if (mod.canRegisterUnits) {
+    items.push({
+      key: "company-register",
+      label: "Cadastrar Empresa",
+      href: "campanhas/empresas/cadastrar",
+      icon: "➕",
+    });
+  }
+
+  return items;
+}
 
 const COMING_SOON = [
   {
@@ -91,6 +132,7 @@ const COMING_SOON = [
 type Props = {
   tenantSlug: string;
   tenantName: string;
+  tenantType: TenantType;
   tenantLogoUrl: string | null;
   userEmail: string;
   userName: string | null;
@@ -106,6 +148,7 @@ const ROLE_META: Record<string, { label: string; icon: string }> = {
 export function AppSidebar({
   tenantSlug,
   tenantName,
+  tenantType,
   tenantLogoUrl,
   userEmail,
   userName,
@@ -115,6 +158,8 @@ export function AppSidebar({
   const [open, setOpen] = useState(true);
   const [adsOpen, setAdsOpen] = useState(true);
 
+  const submenus = buildSubmenus(tenantType);
+
   const hrefFor = (rel: string) =>
     rel === "" ? `/${tenantSlug}` : `/${tenantSlug}/${rel}`;
   const isActive = (rel: string) => {
@@ -123,7 +168,7 @@ export function AppSidebar({
     return pathname === full || pathname.startsWith(full + "/");
   };
 
-  const adsActive = SUBMENUS.some((s) => isActive(s.href));
+  const adsActive = submenus.some((s) => isActive(s.href));
 
   return (
     <aside
@@ -207,7 +252,7 @@ export function AppSidebar({
             className="mt-1"
             style={{ paddingLeft: open ? 12 : 0, marginBottom: 8 }}
           >
-            {SUBMENUS.map((s) => {
+            {submenus.map((s) => {
               const active = isActive(s.href);
               return (
                 <Link

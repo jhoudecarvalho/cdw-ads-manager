@@ -8,12 +8,21 @@ const admin: ActorContext = {
   id: "u1",
   tenantId: TENANT_A,
   role: "ADMIN",
+  tenantType: "FRANCHISE",
+};
+
+const adminCompany: ActorContext = {
+  id: "u1c",
+  tenantId: TENANT_A,
+  role: "ADMIN",
+  tenantType: "COMPANY",
 };
 
 const regional: ActorContext = {
   id: "u2",
   tenantId: TENANT_A,
   role: "REGIONAL",
+  tenantType: "FRANCHISE",
   regionIds: ["region_1"],
 };
 
@@ -21,7 +30,15 @@ const franchisee: ActorContext = {
   id: "u3",
   tenantId: TENANT_A,
   role: "FRANCHISEE",
+  tenantType: "FRANCHISE",
   franchiseIds: ["franchise_1"],
+};
+
+const superAdmin: ActorContext = {
+  id: "uSA",
+  tenantId: "system",
+  role: "SUPER_ADMIN",
+  tenantType: "FRANCHISE",
 };
 
 describe("can() — boundary de tenant", () => {
@@ -45,8 +62,19 @@ describe("can() — ADMIN", () => {
     "manage_ad_accounts",
     "manage_regions",
     "view_audit_log",
+    "view_company",
+    "manage_companies",
   ] as const)("permite %s no próprio tenant", (action) => {
     expect(can(admin, action, { tenantId: TENANT_A })).toBe(true);
+  });
+
+  it.each([
+    "view_all_tenants",
+    "manage_tenants",
+    "impersonate_tenant",
+  ] as const)("nega ações cross-tenant (%s)", (action) => {
+    expect(can(admin, action)).toBe(false);
+    expect(can(adminCompany, action)).toBe(false);
   });
 });
 
@@ -127,6 +155,7 @@ describe("can() — sem vínculos carregados (defaults seguros)", () => {
     id: "u4",
     tenantId: TENANT_A,
     role: "REGIONAL",
+    tenantType: "FRANCHISE",
   };
 
   it("REGIONAL sem regionIds → não pode ver franquias", () => {
@@ -136,5 +165,53 @@ describe("can() — sem vínculos carregados (defaults seguros)", () => {
         regionId: "region_1",
       }),
     ).toBe(false);
+  });
+});
+
+describe("can() — SUPER_ADMIN", () => {
+  it("ignora a regra zero: atravessa tenants em qualquer ação", () => {
+    expect(can(superAdmin, "view_dashboards", { tenantId: TENANT_A })).toBe(
+      true,
+    );
+    expect(can(superAdmin, "view_dashboards", { tenantId: TENANT_B })).toBe(
+      true,
+    );
+    expect(can(superAdmin, "manage_users", { tenantId: TENANT_B })).toBe(true);
+  });
+
+  it.each([
+    "view_all_tenants",
+    "manage_tenants",
+    "impersonate_tenant",
+    "manage_companies",
+    "manage_franchise",
+    "view_audit_log",
+  ] as const)("permite ação cross-tenant (%s) sem resource", (action) => {
+    expect(can(superAdmin, action)).toBe(true);
+  });
+
+  it("REGIONAL e FRANCHISEE não recebem privilégios cross-tenant", () => {
+    expect(can(regional, "view_all_tenants")).toBe(false);
+    expect(can(franchisee, "impersonate_tenant")).toBe(false);
+  });
+});
+
+describe("can() — modo COMPANY", () => {
+  it("ADMIN COMPANY cria e visualiza empresas", () => {
+    expect(can(adminCompany, "manage_companies", { tenantId: TENANT_A })).toBe(
+      true,
+    );
+    expect(
+      can(adminCompany, "view_company", {
+        tenantId: TENANT_A,
+        companyId: "comp_1",
+      }),
+    ).toBe(true);
+  });
+
+  it("ADMIN não consegue gerenciar empresas em outro tenant", () => {
+    expect(can(adminCompany, "manage_companies", { tenantId: TENANT_B })).toBe(
+      false,
+    );
   });
 });
