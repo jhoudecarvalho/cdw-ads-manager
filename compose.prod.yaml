@@ -104,6 +104,13 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
       DIRECT_URL:   postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      # Credenciais do SUPER_ADMIN — só usadas quando o bootstrap roda com
+      # --seed (default em prod via .github/workflows/deploy.yml). O seed
+      # RECUSA criar o super admin se SUPER_ADMIN_PASSWORD estiver vazio
+      # em produção (evita vazar a senha de dev).
+      SUPER_ADMIN_EMAIL:    ${SUPER_ADMIN_EMAIL:-}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:-}
+      SUPER_ADMIN_NAME:     ${SUPER_ADMIN_NAME:-}
 
 volumes:
   postgres_data:

@@ -27,7 +27,16 @@ enum TenantStatus {
   CANCELED
 }
 
+/// Modo operacional do tenant. Define o "shape" do menu, filtros e modelo de
+/// unidades (Region+Franchise vs Company plana). Único do tenant — vem do
+/// cadastro do cliente do SaaS e não muda no dia-a-dia.
+enum TenantType {
+  FRANCHISE
+  COMPANY
+}
+
 enum UserRole {
+  SUPER_ADMIN // opera acima dos tenants — mora no tenant técnico `system`
   ADMIN // matriz: vê tudo do tenant
   REGIONAL // gestor regional: vê franquias de suas regiões
   FRANCHISEE // franqueado: vê só a própria franquia
@@ -75,6 +84,12 @@ enum AuditEventType {
   DATA_EXPORTED
   DATA_DELETED
   TERMS_ACCEPTED
+  COMPANY_CREATED
+  COMPANY_STATUS_CHANGED
+  TENANT_CREATED
+  TENANT_UPDATED
+  TENANT_IMPERSONATED
+  TENANT_IMPERSONATION_ENDED
 }
 
 // =========================================================================
@@ -86,6 +101,10 @@ model Tenant {
   slug         String       @unique
   name         String
   status       TenantStatus @default(ACTIVE)
+  /// `FRANCHISE` mantém o comportamento original (Region → Franchise).
+  /// `COMPANY` ativa o modo Empresas (lista plana, sem Region). Default
+  /// `FRANCHISE` preserva tenants existentes na migration.
+  tenantType   TenantType   @default(FRANCHISE)
   plan         String?
   logoUrl      String?
   primaryColor String?      @default("#7C3AED")
@@ -96,6 +115,8 @@ model Tenant {
   users      User[]
   regions    Region[]
   franchises Franchise[]
+  companies  Company[]
+  counters   TenantCounter[]
 
   @@map("tenants")
 }
@@ -246,16 +267,76 @@ model UserRegion {
 }
 
 // =========================================================================
+// Estrutura organizacional (modo COMPANY): Company
+// =========================================================================
+
+/// Unidade do modo COMPANY — equivalente a `Franchise` no modo FRANCHISE, mas
+/// sem `Region`, sem UF/city obrigatórios. `externalCode` é a numeração
+/// sequencial visível ao usuário (ex.: "EMP-0001"), gerada via
+/// `TenantCounter` com SELECT ... FOR UPDATE.
+///
+/// RLS habilitada por `companies` na migration `add_companies` (mesma policy
+/// `tenant_isolation` das outras tabelas de negócio).
+model Company {
+  id           String    @id @default(cuid())
+  tenantId     String
+  name         String
+  externalCode String
+  sector       String?
+  cnpj         String?
+  contactEmail String?
+  /// "ACTIVE" | "INACTIVE" — string simples por ora; vira enum quando
+  /// surgirem estados intermediários.
+  status       String    @default("ACTIVE")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  adAccounts AdAccount[]
+  campaigns  Campaign[]
+
+  @@unique([tenantId, externalCode])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("companies")
+}
+
+/// Contadores monotônicos por tenant, usados como "sequence per-tenant" para
+/// gerar IDs visíveis (ex.: `EMP-0001`). Acessado com SELECT ... FOR UPDATE
+/// dentro da transação que cria o recurso — garante unicidade sob
+/// concorrência sem depender de retries em violação de UNIQUE.
+model TenantCounter {
+  tenantId String
+  /// Identificador do contador (ex.: "company"). Vira família de contadores
+  /// caso surjam outros recursos com numeração visível.
+  kind     String
+  value    Int    @default(0)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, kind])
+  @@map("tenant_counters")
+}
+
+// =========================================================================
 // Integrações de Ads
 // =========================================================================
 
-/// Conta de anúncios conectada via OAuth por franqueado.
+/// Conta de anúncios conectada via OAuth.
 /// `accessToken` / `refreshToken` ficam criptografados em repouso (Fase 5
 /// adiciona o helper de criptografia; por ora ficam como strings).
+///
+/// Polimorfismo: a conta pertence a UMA franquia OU a UMA empresa,
+/// conforme o `tenantType` do tenant. CHECK no banco garante exatamente um
+/// preenchido (`ad_accounts_unit_xor` — ver migration polymorphic_unit).
+/// Prisma não modela CHECK em nível de schema; código que cria AdAccount
+/// precisa respeitar o invariante explicitamente.
 model AdAccount {
   id                String          @id @default(cuid())
   tenantId          String
-  franchiseId       String
+  franchiseId       String?
+  companyId         String?
   platform          Platform
   externalAccountId String
   /// Ciphertext em repouso. Helpers de cifra entram na Fase 5.
@@ -268,7 +349,8 @@ model AdAccount {
   updatedAt         DateTime        @updatedAt
   deletedAt         DateTime?
 
-  franchise Franchise  @relation(fields: [franchiseId], references: [id], onDelete: Cascade)
+  franchise Franchise? @relation(fields: [franchiseId], references: [id], onDelete: Cascade)
+  company   Company?   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   campaigns Campaign[]
   syncLogs  SyncLog[]
 
@@ -277,13 +359,18 @@ model AdAccount {
   @@unique([tenantId, platform, externalAccountId])
   @@index([tenantId])
   @@index([franchiseId])
+  @@index([companyId])
   @@map("ad_accounts")
 }
 
+/// Polimorfismo: campanha pertence a UMA franquia OU a UMA empresa,
+/// conforme o `tenantType` do tenant. CHECK `campaigns_unit_xor` (migration
+/// polymorphic_unit) garante exatamente um dos dois preenchido.
 model Campaign {
   id          String         @id @default(cuid())
   tenantId    String
-  franchiseId String
+  franchiseId String?
+  companyId   String?
   adAccountId String
   platform    Platform
   externalId  String
@@ -297,15 +384,18 @@ model Campaign {
   updatedAt   DateTime       @updatedAt
   deletedAt   DateTime?
 
-  franchise Franchise             @relation(fields: [franchiseId], references: [id], onDelete: Cascade)
+  franchise Franchise?            @relation(fields: [franchiseId], references: [id], onDelete: Cascade)
+  company   Company?              @relation(fields: [companyId], references: [id], onDelete: Cascade)
   adAccount AdAccount             @relation(fields: [adAccountId], references: [id], onDelete: Cascade)
   metrics   CampaignMetricDaily[]
 
   @@unique([adAccountId, externalId])
   @@index([tenantId])
   @@index([franchiseId])
+  @@index([companyId])
   @@index([adAccountId])
   @@index([tenantId, platform])
+  @@index([tenantId, companyId])
   @@map("campaigns")
 }
 

@@ -154,10 +154,15 @@ proxy.ts                       # ex-middleware (Next 16)
 
 ### Usuários de exemplo (após `npm run db:seed`)
 
-| Tenant | E-mail              | Senha            |
-| ------ | ------------------- | ---------------- |
-| anjos  | `admin@anjos.test`  | `dev-anjos-123`  |
-| kgepel | `admin@kgepel.test` | `dev-kgepel-123` |
+| Tenant     | Tipo        | E-mail                    | Senha               |
+| ---------- | ----------- | ------------------------- | ------------------- |
+| anjos      | FRANCHISE   | `admin@anjos.test`        | `dev-anjos-123`     |
+| kgepel     | COMPANY     | `admin@kgepel.test`       | `dev-kgepel-123`    |
+| clickvel   | FRANCHISE   | `admin@clickvel.test`     | `dev-clickvel-123`  |
+| _(global)_ | SUPER_ADMIN | `superadmin@system.test`  | `dev-super-123`     |
+
+- **Tipo do tenant** (`tenantType`) controla a UI: `FRANCHISE` mantém Region → Franchise; `COMPANY` lista plana de empresas (sem Regiões, com tela "Cadastrar Empresa").
+- **SUPER_ADMIN** mora no tenant técnico `__system__` (não navegável por slug). Entra em `/admin/login`, opera acima dos tenants, pode impersonar via cookie HttpOnly assinado (HMAC com `AUTH_SECRET`). Credenciais podem ser sobrescritas no seed via `SUPER_ADMIN_EMAIL`/`SUPER_ADMIN_PASSWORD`/`SUPER_ADMIN_NAME` no `.env`.
 
 ## Modelos de negócio + RLS (Fase 3)
 

@@ -168,11 +168,19 @@ export default async function VisaoGeralPage({ params, searchParams }: Props) {
           )}
         </ChartCard>
 
-        <ChartCard title="🗺️ Performance por Região" height={220}>
-          {data.byRegion.length === 0 ? (
+        <ChartCard
+          title={`🗺️ Performance por ${data.groupLabel}`}
+          height={220}
+        >
+          {data.byGroup.length === 0 ? (
             <Empty />
           ) : (
-            <RegionRadar data={data.byRegion} />
+            <RegionRadar
+              data={data.byGroup.map((g) => ({
+                region: g.name,
+                conversions: g.conversions,
+              }))}
+            />
           )}
         </ChartCard>
       </div>

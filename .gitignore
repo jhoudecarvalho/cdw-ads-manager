@@ -46,3 +46,7 @@ playwright-report/
 test-results/
 /blob-report/
 /playwright/.cache/
+
+# Protótipo / mocks single-file usados como spec visual, não como código de prod.
+remixed-*.tsx
+franchise-ads-dashboard.jsx

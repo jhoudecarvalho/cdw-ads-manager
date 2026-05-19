@@ -26,11 +26,14 @@ let TENANT_A_ID = "";
 let TENANT_B_ID = "";
 
 beforeAll(async () => {
+  // Ambos os tenants escolhidos precisam estar no modo FRANCHISE para que
+  // os testes de franchise.* tenham dados. `kgepel` virou COMPANY na Etapa 1,
+  // então usamos `anjos` + `clickvel`.
   const a = await prisma.tenant.findUnique({ where: { slug: "anjos" } });
-  const b = await prisma.tenant.findUnique({ where: { slug: "kgepel" } });
+  const b = await prisma.tenant.findUnique({ where: { slug: "clickvel" } });
   if (!a || !b) {
     throw new Error(
-      "Tenants 'anjos' e 'kgepel' não encontrados. Rode `npm run db:seed`.",
+      "Tenants 'anjos' e 'clickvel' não encontrados. Rode `npm run db:seed`.",
     );
   }
   TENANT_A_ID = a.id;

@@ -85,11 +85,17 @@ jobs:
             docker compose -f compose.prod.yaml build app bootstrap
             echo "::endgroup::"
 
-            echo "::group::bootstrap (migrate deploy + setup-app-role)"
-            # Idempotente: sem --seed em prod. Aplica migrations novas e
-            # garante o role franchise_hub_app sem rotacionar a senha
-            # (setup-app-role.ts preserva a senha em re-runs).
-            docker compose -f compose.prod.yaml run --rm bootstrap
+            echo "::group::bootstrap (migrate deploy + setup-app-role + seed)"
+            # Idempotente em todas as etapas: migrate deploy só aplica o que
+            # falta; setup-app-role.ts preserva a senha; o seed faz upsert dos
+            # tenants/usuários (sem duplicar) e pula ad accounts/campanhas se
+            # já houver sync_logs naquele tenant.
+            #
+            # Rodar --seed em prod garante que tenants/usuários novos do
+            # repo (ex.: super admin) cheguem ao banco — sem isso só o schema
+            # vai e o login fica quebrado.
+            docker compose -f compose.prod.yaml run --rm bootstrap \
+              bash scripts/bootstrap.sh --seed
             echo "::endgroup::"
 
             echo "::group::docker compose up -d"

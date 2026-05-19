@@ -50,7 +50,10 @@ export async function loadCampaignsList(
         type: true,
         platform: true,
         status: true,
+        // Polimórfica: pega franchise OU company conforme o tenantType.
+        // CHECK no banco garante exatamente um preenchido.
         franchise: { select: { name: true, city: true } },
+        company: { select: { name: true } },
         metrics: {
           where: { date: { gte: since } },
           select: {
@@ -83,8 +86,8 @@ export async function loadCampaignsList(
         type: c.type,
         platform: c.platform,
         status: c.status,
-        franchiseName: c.franchise.name,
-        franchiseCity: c.franchise.city,
+        franchiseName: c.franchise?.name ?? c.company?.name ?? "—",
+        franchiseCity: c.franchise?.city ?? "",
         spend,
         revenue,
         roas: safeDiv(revenue, spend),

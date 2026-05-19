@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { ApiInfoFooter } from "@/components/api-info-footer";
 import { ChartCard } from "@/components/chart-card";
@@ -25,6 +26,8 @@ export default async function RegioesPage({ params, searchParams }: Props) {
   const [{ slug }, sp] = await Promise.all([params, searchParams]);
   const session = await auth();
   const actor = await loadActorContext(session!);
+  // Página exclusiva do modo FRANCHISE — em COMPANY não há Region.
+  if (actor.tenantType !== "FRANCHISE") notFound();
   const filters = parseDashboardFilters(sp);
   const regions = await loadRegionSummary(actor.tenantId, actor, filters);
 

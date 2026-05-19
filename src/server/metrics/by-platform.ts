@@ -74,6 +74,8 @@ export async function loadPlatformSlice(
         orderBy: { date: "asc" },
       }),
       // Para byType e topCampaigns: pega campanhas + métricas agregadas.
+      // Campaign é polimórfica (franchise OU company) — pegamos os dois e
+      // usamos o que estiver presente. CHECK no banco garante exatamente um.
       tx.campaign.findMany({
         where: where.campaign,
         select: {
@@ -81,6 +83,7 @@ export async function loadPlatformSlice(
           name: true,
           type: true,
           franchise: { select: { name: true } },
+          company: { select: { name: true } },
           metrics: {
             where: { date: where.date as { gte: Date } },
             select: {
@@ -123,7 +126,7 @@ export async function loadPlatformSlice(
       campaignTotals.push({
         id: c.id,
         name: c.name,
-        franchiseName: c.franchise.name,
+        franchiseName: c.franchise?.name ?? c.company?.name ?? "—",
         spend: s,
         revenue: r,
         roas: safeDiv(r, s),
