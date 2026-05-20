@@ -9,6 +9,7 @@ import {
 } from "./_actions";
 import { AdAccountsTable } from "./_table";
 import { ConnectAccountForm } from "./_form";
+import { ConnectMetaButton } from "./_connect-meta";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -61,49 +62,19 @@ export default async function ContasPage({ params }: Props) {
         />
         {canManage && (
           <div className="space-y-4">
-            {/* Conexão real via OAuth do Meta. Form GET nativo monta a
-                query string e navega pro route handler que inicia o fluxo. */}
+            {/* Conexão real via OAuth do Meta. Navegação top-level (não form)
+                pra não esbarrar na CSP form-action — ver _connect-meta.tsx. */}
             <aside className="space-y-3 rounded-md border border-border bg-surface p-4">
               <h2 className="text-sm font-semibold">Conectar via Meta</h2>
               <p className="text-xs text-text-muted">
                 Autentique no Meta e escolha a conta de anúncio para vincular a
                 uma {mod.unitLabel.toLowerCase()}.
               </p>
-              {units.length > 0 ? (
-                <form
-                  method="get"
-                  action="/api/ads/meta/start"
-                  className="space-y-3"
-                >
-                  <input type="hidden" name="slug" value={slug} />
-                  <label className="block">
-                    <span className="font-mono text-[10px] uppercase tracking-[1.5px] text-text-muted">
-                      {mod.unitLabel}
-                    </span>
-                    <select
-                      name="unitId"
-                      defaultValue={units[0]!.id}
-                      className="mt-1 w-full rounded-md border border-border bg-surface-alt px-3 py-2 text-sm text-text outline-none focus:border-accent"
-                    >
-                      {units.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <button
-                    type="submit"
-                    className="w-full rounded-md border border-[#0668E1]/40 bg-[#0668E1]/15 px-4 py-2 text-xs font-semibold text-[#3b82f6] transition hover:bg-[#0668E1]/25"
-                  >
-                    Conectar via Meta
-                  </button>
-                </form>
-              ) : (
-                <p className="text-xs text-text-muted">
-                  Nenhuma unidade disponível para vincular.
-                </p>
-              )}
+              <ConnectMetaButton
+                slug={slug}
+                units={units}
+                unitLabel={mod.unitLabel}
+              />
             </aside>
 
             <aside className="space-y-3 rounded-md border border-border bg-surface p-4">
