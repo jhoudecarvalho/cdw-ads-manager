@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export const metadata = {
   title: "Política de Privacidade · Franchise HUB",
 };
@@ -83,9 +85,9 @@ export default function PrivacidadePage() {
             plataforma ou removendo o aplicativo nas configurações do Facebook —
             nesse caso, recebemos a notificação de exclusão e apagamos os tokens
             correspondentes. Detalhes em{" "}
-            <a href="/data-deletion" className="text-accent underline">
+            <Link href="/data-deletion" className="text-accent underline">
               Exclusão de dados
-            </a>
+            </Link>
             .
           </p>
         </section>

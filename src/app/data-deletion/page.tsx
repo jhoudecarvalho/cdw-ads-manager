@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 type Props = {
   searchParams: Promise<{ code?: string }>;
 };
@@ -65,9 +67,9 @@ export default async function DataDeletionPage({ searchParams }: Props) {
           <li>
             Por e-mail, solicitando a exclusão para o nosso contato de
             privacidade (ver a{" "}
-            <a href="/privacidade" className="text-accent underline">
+            <Link href="/privacidade" className="text-accent underline">
               Política de Privacidade
-            </a>
+            </Link>
             ).
           </li>
         </ul>
