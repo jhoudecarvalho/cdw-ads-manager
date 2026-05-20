@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  appBaseUrl,
   exchangeCodeForToken,
   exchangeForLongLived,
   fetchMetaUserId,
@@ -28,7 +29,7 @@ export async function GET(req: Request): Promise<Response> {
   if (oauthError) {
     const slug = stateRaw ? verifyState(stateRaw)?.slug : null;
     const dest = slug ? `/${slug}/campanhas/contas?error=cancelled` : "/";
-    return NextResponse.redirect(new URL(dest, url.origin));
+    return NextResponse.redirect(new URL(dest, appBaseUrl()));
   }
 
   if (!code || !stateRaw) {
@@ -61,7 +62,7 @@ export async function GET(req: Request): Promise<Response> {
     });
 
     return NextResponse.redirect(
-      new URL(`/${state.slug}/campanhas/contas/conectar/meta`, url.origin),
+      new URL(`/${state.slug}/campanhas/contas/conectar/meta`, appBaseUrl()),
     );
   } catch (err) {
     const msg =
@@ -71,7 +72,7 @@ export async function GET(req: Request): Promise<Response> {
     return NextResponse.redirect(
       new URL(
         `/${state.slug}/campanhas/contas?error=${encodeURIComponent(msg)}`,
-        url.origin,
+        appBaseUrl(),
       ),
     );
   }

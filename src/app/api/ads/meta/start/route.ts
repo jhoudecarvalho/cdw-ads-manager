@@ -3,7 +3,7 @@ import { env } from "@/env";
 import { auth } from "@/auth";
 import { can } from "@/server/auth/can";
 import { resolveActorForSlug } from "@/server/auth/require-actor";
-import { buildAuthUrl, signState } from "@/server/ads/meta-oauth";
+import { appBaseUrl, buildAuthUrl, signState } from "@/server/ads/meta-oauth";
 
 /**
  * Início do OAuth Meta. Recebe `?slug=&unitId=`, valida sessão + permissão,
@@ -28,19 +28,19 @@ export async function GET(req: Request): Promise<Response> {
   // inválido"). Falha cedo com erro claro na própria tela de Contas.
   if (!env.META_ADS_CLIENT_ID || !env.META_ADS_CLIENT_SECRET) {
     return NextResponse.redirect(
-      new URL(`/${slug}/campanhas/contas?error=meta_not_configured`, url.origin),
+      new URL(`/${slug}/campanhas/contas?error=meta_not_configured`, appBaseUrl()),
     );
   }
 
   const session = await auth();
   if (!session?.user) {
-    return NextResponse.redirect(new URL(`/${slug}/login`, url.origin));
+    return NextResponse.redirect(new URL(`/${slug}/login`, appBaseUrl()));
   }
 
   // Re-escopo pro tenant do slug (cobre super admin impersonando) + autorização.
   const resolved = await resolveActorForSlug(slug);
   if (!resolved.ok) {
-    return NextResponse.redirect(new URL(`/${slug}/login`, url.origin));
+    return NextResponse.redirect(new URL(`/${slug}/login`, appBaseUrl()));
   }
   const actor = resolved.actor;
 
@@ -53,7 +53,7 @@ export async function GET(req: Request): Promise<Response> {
         });
   if (!authorized) {
     return NextResponse.redirect(
-      new URL(`/${slug}/campanhas/contas?error=forbidden`, url.origin),
+      new URL(`/${slug}/campanhas/contas?error=forbidden`, appBaseUrl()),
     );
   }
 
