@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   exchangeCodeForToken,
   exchangeForLongLived,
+  fetchMetaUserId,
   listUserAdAccounts,
   MetaOAuthError,
   verifyState,
@@ -45,13 +46,17 @@ export async function GET(req: Request): Promise<Response> {
   try {
     const shortToken = await exchangeCodeForToken(code);
     const longLived = await exchangeForLongLived(shortToken);
-    const accounts = await listUserAdAccounts(longLived.token);
+    const [metaUserId, accounts] = await Promise.all([
+      fetchMetaUserId(longLived.token),
+      listUserAdAccounts(longLived.token),
+    ]);
 
     await setMetaPending({
       slug: state.slug,
       unitId: state.unitId,
       token: longLived.token,
       expiresAt: longLived.expiresAt.toISOString(),
+      metaUserId,
       accounts,
     });
 

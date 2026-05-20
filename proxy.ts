@@ -40,7 +40,11 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Tudo, exceto: api, _next, favicon, sitemap, robots, arquivos com extensão (.png, .svg, .ico…)
-    "/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|.*\\..*).*)",
+    // Tudo, exceto: api, _next, favicon, sitemap, robots, páginas públicas
+    // estáticas (privacidade, data-deletion) e arquivos com extensão.
+    // As páginas públicas são rotas reais top-level — sem essa exclusão, o
+    // proxy as trataria como slug de tenant (reservado → inválido) e
+    // reescreveria pra /404.
+    "/((?!api|_next/static|_next/image|privacidade|data-deletion|favicon.ico|sitemap.xml|robots.txt|.*\\..*).*)",
   ],
 };

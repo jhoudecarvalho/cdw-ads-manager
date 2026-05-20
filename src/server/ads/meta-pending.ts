@@ -20,6 +20,8 @@ export type MetaPending = {
   unitId: string;
   token: string;
   expiresAt: string; // ISO
+  /** Facebook user id de quem autorizou — persistido na AdAccount. */
+  metaUserId: string;
   accounts: MetaAdAccountOption[];
 };
 
@@ -44,6 +46,7 @@ export async function readMetaPending(): Promise<MetaPending | null> {
       typeof parsed.slug !== "string" ||
       typeof parsed.unitId !== "string" ||
       typeof parsed.token !== "string" ||
+      typeof parsed.metaUserId !== "string" ||
       !Array.isArray(parsed.accounts)
     ) {
       return null;
