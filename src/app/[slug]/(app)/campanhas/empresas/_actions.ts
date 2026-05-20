@@ -2,9 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { auth } from "@/auth";
 import { can } from "@/server/auth/can";
-import { loadActorContext } from "@/server/auth/load-actor";
+import { resolveActorForSlug } from "@/server/auth/require-actor";
 import { recordAudit } from "@/server/audit/record";
 import { withTenantScope } from "@/server/db/tenant-scope";
 
@@ -91,9 +90,9 @@ export async function createCompanyAction(
   _prev: CompanyFormState,
   formData: FormData,
 ): Promise<CompanyFormState> {
-  const session = await auth();
-  if (!session?.user) return { ok: false, error: "Sessão expirada." };
-  const actor = await loadActorContext(session);
+  const resolved = await resolveActorForSlug(slug);
+  if (!resolved.ok) return { ok: false, error: resolved.error };
+  const actor = resolved.actor;
 
   if (actor.tenantType !== "COMPANY") {
     return { ok: false, error: "Tenant atual não suporta empresas." };
@@ -164,9 +163,9 @@ export async function setCompanyStatusAction(
   slug: string,
   input: { companyId: string; status: "ACTIVE" | "INACTIVE" },
 ): Promise<{ ok: boolean; error?: string }> {
-  const session = await auth();
-  if (!session?.user) return { ok: false, error: "Sessão expirada." };
-  const actor = await loadActorContext(session);
+  const resolved = await resolveActorForSlug(slug);
+  if (!resolved.ok) return { ok: false, error: resolved.error };
+  const actor = resolved.actor;
 
   if (actor.tenantType !== "COMPANY") {
     return { ok: false, error: "Tenant atual não suporta empresas." };
