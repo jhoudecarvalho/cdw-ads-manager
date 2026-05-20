@@ -1,7 +1,6 @@
-import { auth } from "@/auth";
 import { ApiInfoFooter } from "@/components/api-info-footer";
 import { parseDashboardFilters } from "@/lib/filters";
-import { loadActorContext } from "@/server/auth/load-actor";
+import { requireActor } from "@/server/auth/require-actor";
 import { loadCampaignsList } from "@/server/metrics/campaigns-list";
 import { CampaignsTable } from "./_table";
 
@@ -15,8 +14,7 @@ export default async function CampanhasListagemPage({
   searchParams,
 }: Props) {
   const [{ slug }, sp] = await Promise.all([params, searchParams]);
-  const session = await auth();
-  const actor = await loadActorContext(session!);
+  const actor = await requireActor(slug);
   const filters = parseDashboardFilters(sp);
   const rows = await loadCampaignsList(actor.tenantId, actor, filters);
 

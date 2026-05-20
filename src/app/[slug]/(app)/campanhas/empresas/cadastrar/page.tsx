@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
-import { auth } from "@/auth";
 import { can } from "@/server/auth/can";
-import { loadActorContext } from "@/server/auth/load-actor";
+import { requireActor } from "@/server/auth/require-actor";
 import {
   createCompanyAction,
   type CompanyFormState,
@@ -14,8 +13,7 @@ type Props = {
 
 export default async function CadastrarEmpresaPage({ params }: Props) {
   const { slug } = await params;
-  const session = await auth();
-  const actor = await loadActorContext(session!);
+  const actor = await requireActor(slug);
 
   if (actor.tenantType !== "COMPANY") notFound();
   if (!can(actor, "manage_companies", { tenantId: actor.tenantId })) {

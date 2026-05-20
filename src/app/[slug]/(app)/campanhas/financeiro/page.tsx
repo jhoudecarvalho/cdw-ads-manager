@@ -1,11 +1,10 @@
-import { auth } from "@/auth";
 import { ApiInfoFooter } from "@/components/api-info-footer";
 import { AreaTrendChart } from "@/components/charts/area-trend-chart";
 import { ChartCard } from "@/components/chart-card";
 import { KpiCard } from "@/components/kpi-card";
 import { brl, pct } from "@/lib/format";
 import { parseDashboardFilters } from "@/lib/filters";
-import { loadActorContext } from "@/server/auth/load-actor";
+import { requireActor } from "@/server/auth/require-actor";
 import { loadFinancial } from "@/server/metrics/financial";
 
 type Props = {
@@ -15,8 +14,7 @@ type Props = {
 
 export default async function FinanceiroPage({ params, searchParams }: Props) {
   const [{ slug }, sp] = await Promise.all([params, searchParams]);
-  const session = await auth();
-  const actor = await loadActorContext(session!);
+  const actor = await requireActor(slug);
   const filters = parseDashboardFilters(sp);
   const data = await loadFinancial(actor.tenantId, actor, filters);
 
