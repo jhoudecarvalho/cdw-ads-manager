@@ -13,17 +13,35 @@ import { ConnectMetaButton } from "./_connect-meta";
 
 type Props = {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ error?: string }>;
 };
+
+/** Mapeia chaves de erro conhecidas (vindas dos route handlers) em mensagens. */
+function errorMessage(error: string | undefined): string | null {
+  if (!error) return null;
+  switch (error) {
+    case "meta_not_configured":
+      return "Meta não configurado no servidor — defina META_ADS_CLIENT_ID e META_ADS_CLIENT_SECRET no .env e reinicie o app.";
+    case "forbidden":
+      return "Você não tem permissão para conectar contas nesta unidade.";
+    case "cancelled":
+      return "Conexão com o Meta cancelada.";
+    default:
+      // Erros do callback chegam com a mensagem já legível (encodeURIComponent).
+      return decodeURIComponent(error);
+  }
+}
 
 /**
  * Contas de Anúncio — lista as contas Google/Meta conectadas e permite
- * adicionar/desconectar. Em modo mock as contas não têm token (OAuth real
- * é etapa futura), mas já recebem campanhas/métricas no próximo sync.
+ * adicionar/desconectar. Contas conectadas via OAuth (com token) puxam dados
+ * reais no sync; as mock continuam com dados de demonstração.
  */
-export default async function ContasPage({ params }: Props) {
-  const { slug } = await params;
+export default async function ContasPage({ params, searchParams }: Props) {
+  const [{ slug }, sp] = await Promise.all([params, searchParams]);
   const actor = await requireActor(slug);
   const mod = getTenantModule(actor.tenantType);
+  const error = errorMessage(sp.error);
 
   const [accounts, units] = await Promise.all([
     listAdAccounts(actor.tenantId, actor),
@@ -52,6 +70,16 @@ export default async function ContasPage({ params }: Props) {
           breve — por ora as contas usam dados de demonstração.
         </p>
       </div>
+
+      {error && (
+        <div
+          className="rounded-md border border-red-500/30 px-4 py-3 text-sm text-red-300"
+          style={{ background: "rgba(248, 113, 113, 0.10)" }}
+          role="alert"
+        >
+          {error}
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         <AdAccountsTable
