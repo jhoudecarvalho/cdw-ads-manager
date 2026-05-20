@@ -93,7 +93,9 @@ export async function syncAccount(
   });
 
   try {
-    const provider = getProvider(account.platform);
+    // Provider real só quando a conta tem token (conectada via OAuth) e o
+    // modo é "live"; senão mock. Ver getProvider.
+    const provider = getProvider(account.platform, !!account.accessToken);
     const creds = {
       externalAccountId: account.externalAccountId,
       accessToken: decryptOptional(account.accessToken),

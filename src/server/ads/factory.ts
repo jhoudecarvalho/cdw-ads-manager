@@ -13,19 +13,30 @@ import { MetaAdsProvider } from "./meta-provider";
 const cache = new Map<string, AdsProvider>();
 
 /**
- * Devolve o provider certo para a plataforma. Em `mock` (padrão dev), sempre
- * usa MockAdsProvider; em `live`, instancia Google/Meta — que vão dar erro
- * claro se as credenciais não estão configuradas.
+ * Devolve o provider certo para a plataforma.
+ *
+ * Decisão por conta (não global): só usa o provider real quando
+ *   - `ADS_INTEGRATIONS_MODE === "live"` **e**
+ *   - a conta tem credenciais (`hasCredentials` — i.e. token via OAuth).
+ *
+ * Caso contrário, usa o MockAdsProvider. Isso faz contas conectadas de
+ * verdade (com token) puxarem dados reais, enquanto as contas mock do seed
+ * (sem token) continuam funcionando com dados de demonstração — sem um flag
+ * global que quebraria umas ou outras. Em `mock` (default dev/CI/test) tudo
+ * é mock, garantindo testes determinísticos.
  */
-export function getProvider(platform: Platform): AdsProvider {
-  const mode = env.ADS_INTEGRATIONS_MODE;
-  const key = `${mode}:${platform}`;
+export function getProvider(
+  platform: Platform,
+  hasCredentials = false,
+): AdsProvider {
+  const useReal = env.ADS_INTEGRATIONS_MODE === "live" && hasCredentials;
+  const key = `${useReal ? "live" : "mock"}:${platform}`;
   const cached = cache.get(key);
   if (cached) return cached;
 
   let provider: AdsProvider;
 
-  if (mode === "mock") {
+  if (!useReal) {
     provider = new MockAdsProvider(platform);
   } else {
     switch (platform) {
