@@ -1,9 +1,8 @@
 import { notFound } from "next/navigation";
-import { auth } from "@/auth";
 import { ApiInfoFooter } from "@/components/api-info-footer";
 import { parseDashboardFilters } from "@/lib/filters";
 import { can } from "@/server/auth/can";
-import { loadActorContext } from "@/server/auth/load-actor";
+import { requireActor } from "@/server/auth/require-actor";
 import { loadCompanyRankings } from "@/server/metrics/company-rankings";
 import { CompaniesGrid } from "./_grid";
 
@@ -19,8 +18,7 @@ type Props = {
  */
 export default async function EmpresasPage({ params, searchParams }: Props) {
   const [{ slug }, sp] = await Promise.all([params, searchParams]);
-  const session = await auth();
-  const actor = await loadActorContext(session!);
+  const actor = await requireActor(slug);
   // Página exclusiva do modo COMPANY — em FRANCHISE o caminho correto é
   // `campanhas/franquias`.
   if (actor.tenantType !== "COMPANY") notFound();

@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
-import { auth } from "@/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardHeader } from "@/components/dashboard-header";
-import { loadActorContext } from "@/server/auth/load-actor";
+import { requireActor } from "@/server/auth/require-actor";
 import { prisma } from "@/server/db/prisma";
 import { BrandingForm } from "./_form";
 
@@ -12,8 +11,7 @@ type Props = {
 
 export default async function SettingsPage({ params }: Props) {
   const { slug } = await params;
-  const session = await auth();
-  const actor = await loadActorContext(session!);
+  const actor = await requireActor(slug);
 
   // Apenas ADMIN acessa as configurações do tenant.
   if (actor.role !== "ADMIN") notFound();

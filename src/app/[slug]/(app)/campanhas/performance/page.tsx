@@ -1,4 +1,3 @@
-import { auth } from "@/auth";
 import { ApiInfoFooter } from "@/components/api-info-footer";
 import { ChartCard } from "@/components/chart-card";
 import { KpiCard } from "@/components/kpi-card";
@@ -13,7 +12,7 @@ import {
 } from "@/components/ui/table";
 import { brl, int, multiplier, pct } from "@/lib/format";
 import { parseDashboardFilters } from "@/lib/filters";
-import { loadActorContext } from "@/server/auth/load-actor";
+import { requireActor } from "@/server/auth/require-actor";
 import { loadPerformance } from "@/server/metrics/performance";
 
 type Props = {
@@ -23,8 +22,7 @@ type Props = {
 
 export default async function PerformancePage({ params, searchParams }: Props) {
   const [{ slug }, sp] = await Promise.all([params, searchParams]);
-  const session = await auth();
-  const actor = await loadActorContext(session!);
+  const actor = await requireActor(slug);
   const filters = parseDashboardFilters(sp);
   const data = await loadPerformance(actor.tenantId, actor, filters);
 

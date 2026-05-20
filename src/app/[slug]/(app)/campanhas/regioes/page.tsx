@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { auth } from "@/auth";
 import { ApiInfoFooter } from "@/components/api-info-footer";
 import { ChartCard } from "@/components/chart-card";
 import { RegionRadar } from "@/components/charts/region-radar";
@@ -14,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { brl, int, multiplier, pct } from "@/lib/format";
 import { parseDashboardFilters } from "@/lib/filters";
-import { loadActorContext } from "@/server/auth/load-actor";
+import { requireActor } from "@/server/auth/require-actor";
 import { loadRegionSummary } from "@/server/metrics/region-summary";
 
 type Props = {
@@ -24,8 +23,7 @@ type Props = {
 
 export default async function RegioesPage({ params, searchParams }: Props) {
   const [{ slug }, sp] = await Promise.all([params, searchParams]);
-  const session = await auth();
-  const actor = await loadActorContext(session!);
+  const actor = await requireActor(slug);
   // Página exclusiva do modo FRANCHISE — em COMPANY não há Region.
   if (actor.tenantType !== "FRANCHISE") notFound();
   const filters = parseDashboardFilters(sp);

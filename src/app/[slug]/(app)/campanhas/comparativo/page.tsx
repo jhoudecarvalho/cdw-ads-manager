@@ -1,8 +1,7 @@
-import { auth } from "@/auth";
 import { ApiInfoFooter } from "@/components/api-info-footer";
 import { brl, int, multiplier, pct } from "@/lib/format";
 import { parseDashboardFilters } from "@/lib/filters";
-import { loadActorContext } from "@/server/auth/load-actor";
+import { requireActor } from "@/server/auth/require-actor";
 import { loadComparison } from "@/server/metrics/comparison";
 import type { PlatformSlice } from "@/server/metrics/by-platform";
 
@@ -13,8 +12,7 @@ type Props = {
 
 export default async function ComparativoPage({ params, searchParams }: Props) {
   const [{ slug }, sp] = await Promise.all([params, searchParams]);
-  const session = await auth();
-  const actor = await loadActorContext(session!);
+  const actor = await requireActor(slug);
   const filters = parseDashboardFilters(sp);
   const data = await loadComparison(actor.tenantId, actor, filters);
 
