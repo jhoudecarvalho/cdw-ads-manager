@@ -94,8 +94,17 @@ jobs:
             # Rodar --seed em prod garante que tenants/usuários novos do
             # repo (ex.: super admin) cheguem ao banco — sem isso só o schema
             # vai e o login fica quebrado.
+            #
+            # `< /dev/null` é crítico: este script roda via `ssh ... bash -se
+            # <<REMOTE`, e o bash do remoto lê os comandos da própria stdin.
+            # `docker compose run` (sem -d) herda a stdin do bash e fica
+            # segurando o fd, consumindo as linhas restantes do heredoc.
+            # Resultado: tudo depois deste passo (o `up -d --force-recreate`
+            # e o healthcheck loop) silenciosamente desaparecia, o step
+            # ficava verde, e o container nunca era recriado — só vi
+            # porque o app estava servindo código de 2 deploys atrás.
             docker compose -f compose.prod.yaml run --rm bootstrap \
-              bash scripts/bootstrap.sh --seed
+              bash scripts/bootstrap.sh --seed < /dev/null
             echo "::endgroup::"
 
             echo "::group::docker compose up -d"
