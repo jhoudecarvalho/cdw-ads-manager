@@ -9,6 +9,7 @@ import {
 } from "./_actions";
 import { AdAccountsTable } from "./_table";
 import { ConnectAccountForm } from "./_form";
+import { ConnectMetaButton } from "./_connect-meta";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -60,18 +61,35 @@ export default async function ContasPage({ params }: Props) {
           unitLabel={mod.unitLabel}
         />
         {canManage && (
-          <aside className="space-y-3 rounded-md border border-border bg-surface p-4">
-            <h2 className="text-sm font-semibold">Conectar conta</h2>
-            <p className="text-xs text-text-muted">
-              Vincule uma conta a uma {mod.unitLabel.toLowerCase()}. Sem OAuth
-              ainda — informe o ID da conta manualmente.
-            </p>
-            <ConnectAccountForm
-              action={bound}
-              units={units}
-              unitLabel={mod.unitLabel}
-            />
-          </aside>
+          <div className="space-y-4">
+            {/* Conexão real via OAuth do Meta. Navegação top-level (não form)
+                pra não esbarrar na CSP form-action — ver _connect-meta.tsx. */}
+            <aside className="space-y-3 rounded-md border border-border bg-surface p-4">
+              <h2 className="text-sm font-semibold">Conectar via Meta</h2>
+              <p className="text-xs text-text-muted">
+                Autentique no Meta e escolha a conta de anúncio para vincular a
+                uma {mod.unitLabel.toLowerCase()}.
+              </p>
+              <ConnectMetaButton
+                slug={slug}
+                units={units}
+                unitLabel={mod.unitLabel}
+              />
+            </aside>
+
+            <aside className="space-y-3 rounded-md border border-border bg-surface p-4">
+              <h2 className="text-sm font-semibold">Adicionar manualmente</h2>
+              <p className="text-xs text-text-muted">
+                Cadastro mock (sem OAuth) — informe o ID da conta. Útil para
+                Google Ads enquanto a conexão real não entra.
+              </p>
+              <ConnectAccountForm
+                action={bound}
+                units={units}
+                unitLabel={mod.unitLabel}
+              />
+            </aside>
+          </div>
         )}
       </div>
 
