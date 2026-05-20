@@ -62,6 +62,8 @@ export async function syncAccount(
       select: {
         id: true,
         tenantId: true,
+        franchiseId: true,
+        companyId: true,
         platform: true,
         externalAccountId: true,
         accessToken: true,
@@ -131,12 +133,11 @@ export async function syncAccount(
             },
             create: {
               tenantId,
-              franchiseId: (
-                await tx.adAccount.findUniqueOrThrow({
-                  where: { id: account.id },
-                  select: { franchiseId: true },
-                })
-              ).franchiseId,
+              // Herda o vínculo polimórfico da conta — exatamente um dos dois
+              // está preenchido (CHECK XOR no banco). Antes só copiava
+              // franchiseId, o que quebrava o sync de contas de empresa.
+              franchiseId: account.franchiseId,
+              companyId: account.companyId,
               adAccountId: account.id,
               platform: account.platform,
               externalId: c.externalId,

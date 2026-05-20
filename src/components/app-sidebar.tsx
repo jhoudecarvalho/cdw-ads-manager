@@ -93,6 +93,12 @@ function buildSubmenus(tenantType: TenantType): SubmenuItem[] {
       href: "campanhas/comparativo",
       icon: "⚖️",
     },
+    {
+      key: "accounts",
+      label: "Contas Ads",
+      href: "campanhas/contas",
+      icon: "🔌",
+    },
   );
 
   if (mod.canRegisterUnits) {
