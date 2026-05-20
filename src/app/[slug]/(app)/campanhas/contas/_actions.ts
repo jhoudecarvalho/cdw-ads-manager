@@ -2,9 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { auth } from "@/auth";
 import { can } from "@/server/auth/can";
-import { loadActorContext } from "@/server/auth/load-actor";
+import { resolveActorForSlug } from "@/server/auth/require-actor";
 import { recordAudit } from "@/server/audit/record";
 import { withTenantScope } from "@/server/db/tenant-scope";
 
@@ -51,9 +50,9 @@ export async function createAdAccountAction(
   _prev: AdAccountFormState,
   formData: FormData,
 ): Promise<AdAccountFormState> {
-  const session = await auth();
-  if (!session?.user) return { ok: false, error: "Sessão expirada." };
-  const actor = await loadActorContext(session);
+  const resolved = await resolveActorForSlug(slug);
+  if (!resolved.ok) return { ok: false, error: resolved.error };
+  const actor = resolved.actor;
 
   const parsed = CreateSchema.safeParse({
     platform: formData.get("platform"),
@@ -138,9 +137,9 @@ export async function disconnectAdAccountAction(
   slug: string,
   input: { adAccountId: string },
 ): Promise<{ ok: boolean; error?: string }> {
-  const session = await auth();
-  if (!session?.user) return { ok: false, error: "Sessão expirada." };
-  const actor = await loadActorContext(session);
+  const resolved = await resolveActorForSlug(slug);
+  if (!resolved.ok) return { ok: false, error: resolved.error };
+  const actor = resolved.actor;
 
   const adAccountId = z.string().min(1).safeParse(input.adAccountId);
   if (!adAccountId.success) return { ok: false, error: "Entrada inválida." };
