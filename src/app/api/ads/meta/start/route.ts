@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { env } from "@/env";
 import { auth } from "@/auth";
 import { can } from "@/server/auth/can";
 import { resolveActorForSlug } from "@/server/auth/require-actor";
@@ -20,6 +21,14 @@ export async function GET(req: Request): Promise<Response> {
     return NextResponse.json(
       { error: "Parâmetros slug e unitId são obrigatórios." },
       { status: 400 },
+    );
+  }
+
+  // Sem credenciais não adianta ir pro Meta (ele responde "ID do app
+  // inválido"). Falha cedo com erro claro na própria tela de Contas.
+  if (!env.META_ADS_CLIENT_ID || !env.META_ADS_CLIENT_SECRET) {
+    return NextResponse.redirect(
+      new URL(`/${slug}/campanhas/contas?error=meta_not_configured`, url.origin),
     );
   }
 
