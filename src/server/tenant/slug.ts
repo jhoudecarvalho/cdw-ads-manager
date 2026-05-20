@@ -25,6 +25,8 @@ const RESERVED_SLUGS = new Set([
   "static",
   "public",
   "assets",
+  "privacidade",
+  "data-deletion",
   "favicon.ico",
   "robots.txt",
   "sitemap.xml",

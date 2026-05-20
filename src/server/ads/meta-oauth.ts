@@ -176,11 +176,54 @@ export async function exchangeForLongLived(
   };
 }
 
+/**
+ * ID do usuário Meta (Facebook) dono do token. Guardado na AdAccount como
+ * `connectedExternalUserId` para o Data Deletion Callback localizar e revogar
+ * as contas conectadas por esse usuário.
+ */
+export async function fetchMetaUserId(token: string): Promise<string> {
+  const data = await graphGet<{ id: string }>("/me", {
+    fields: "id",
+    access_token: token,
+  });
+  return data.id;
+}
+
 export type MetaAdAccountOption = {
   /** ID com prefixo `act_` — é o que a Marketing API usa nos endpoints. */
   externalAccountId: string;
   name: string;
 };
+
+/**
+ * Valida e decodifica o `signed_request` que a Meta envia no Data Deletion
+ * Callback. Formato: `<base64url(sig)>.<base64url(payload)>`, onde
+ * `sig = HMAC-SHA256(payloadBase64, APP_SECRET)`. Retorna o payload (com
+ * `user_id`) só se a assinatura confere; senão `null` (request forjada).
+ */
+export function parseSignedRequest(
+  signed: string,
+): { user_id?: string; algorithm?: string } | null {
+  const dot = signed.indexOf(".");
+  if (dot < 0) return null;
+  const sigB64 = signed.slice(0, dot);
+  const payloadB64 = signed.slice(dot + 1);
+
+  const appSecret = env.META_ADS_CLIENT_SECRET;
+  if (!appSecret) return null;
+
+  const expected = createHmac("sha256", appSecret).update(payloadB64).digest();
+  const actual = b64urlDecode(sigB64);
+  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(b64urlDecode(payloadB64).toString("utf-8"));
+  } catch {
+    return null;
+  }
+}
 
 export async function listUserAdAccounts(
   token: string,

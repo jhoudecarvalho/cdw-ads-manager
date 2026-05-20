@@ -105,6 +105,7 @@ export async function confirmMetaAccountAction(
               : { franchiseId: pending.unitId, companyId: null }),
             accessToken: encToken,
             tokenExpiresAt: expiresAt,
+            connectedExternalUserId: pending.metaUserId,
             status: "CONNECTED",
             deletedAt: null,
           },
@@ -120,6 +121,7 @@ export async function confirmMetaAccountAction(
             externalAccountId: chosen.externalAccountId,
             accessToken: encToken,
             tokenExpiresAt: expiresAt,
+            connectedExternalUserId: pending.metaUserId,
             status: "CONNECTED",
           },
         });

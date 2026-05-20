@@ -343,6 +343,11 @@ model AdAccount {
   accessToken       String?
   refreshToken      String?
   tokenExpiresAt    DateTime?
+  /// ID do usuário na plataforma externa (ex.: Facebook user id) que
+  /// autorizou esta conexão via OAuth. Usado pelo Data Deletion Callback do
+  /// Meta para localizar e revogar as contas conectadas por aquele usuário
+  /// quando ele pede exclusão / remove o app. Null em contas mock/manuais.
+  connectedExternalUserId String?
   status            AdAccountStatus @default(CONNECTED)
   lastSyncAt        DateTime?
   createdAt         DateTime        @default(now())
@@ -360,6 +365,7 @@ model AdAccount {
   @@index([tenantId])
   @@index([franchiseId])
   @@index([companyId])
+  @@index([platform, connectedExternalUserId])
   @@map("ad_accounts")
 }
 
